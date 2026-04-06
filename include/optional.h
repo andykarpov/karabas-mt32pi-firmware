@@ -37,8 +37,11 @@ public:
 	}
 
 	TOptional(const TOptional<T>& Other)
+		: m_bSet(false)
 	{
-		operator=(Other);
+		if (Other.m_bSet)
+			new(reinterpret_cast<T*>(m_Value)) T(*reinterpret_cast<const T*>(Other.m_Value));
+		m_bSet = Other.m_bSet;
 	}
 
 	explicit TOptional(T&& Value)
@@ -48,9 +51,14 @@ public:
 	}
 
 	explicit TOptional(TOptional<T>&& Other)
+		: m_bSet(false)
 	{
-		m_bSet = Other.m_bSet;
-		new(reinterpret_cast<T*>(m_Value)) T(*reinterpret_cast<const T*>(Other.m_Value));
+		if (Other.m_bSet)
+		{
+			new(reinterpret_cast<T*>(m_Value)) T(static_cast<T&&>(*reinterpret_cast<T*>(Other.m_Value)));
+			m_bSet = true;
+			Other.Reset();
+		}
 	}
 
 	~TOptional() { Reset(); }
@@ -82,15 +90,27 @@ public:
 
 	TOptional<T>& operator =(const TOptional<T>& Other)
 	{
-		m_bSet = Other.m_bSet;
-		*reinterpret_cast<T*>(m_Value) = *reinterpret_cast<const T*>(Other.m_Value);
+		if (this == &Other)
+			return *this;
+		if (m_bSet && Other.m_bSet)
+			*reinterpret_cast<T*>(m_Value) = *reinterpret_cast<const T*>(Other.m_Value);
+		else if (m_bSet && !Other.m_bSet)
+			Reset();
+		else if (!m_bSet && Other.m_bSet)
+		{
+			new(reinterpret_cast<T*>(m_Value)) T(*reinterpret_cast<const T*>(Other.m_Value));
+			m_bSet = true;
+		}
 		return *this;
 	}
 
 	TOptional<T>& operator =(const T& Value)
 	{
+		if (m_bSet)
+			*reinterpret_cast<T*>(m_Value) = Value;
+		else
+			new(reinterpret_cast<T*>(m_Value)) T(Value);
 		m_bSet = true;
-		*reinterpret_cast<T*>(m_Value) = Value;
 		return *this;
 	}
 

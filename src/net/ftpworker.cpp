@@ -200,7 +200,12 @@ void CFTPWorker::Run()
 			break;
 		}
 
-		// FIXME
+		// FTP commands end with CRLF; require at least 2 bytes to safely strip it.
+		if (nReceiveBytes < 2)
+		{
+			pScheduler->Yield();
+			continue;
+		}
 		m_CommandBuffer[nReceiveBytes - 2] = '\0';
 
 #ifdef FTPDAEMON_DEBUG
