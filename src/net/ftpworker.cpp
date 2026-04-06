@@ -510,6 +510,17 @@ bool CFTPWorker::Port(const char* pArgs)
 	m_DataSocketIPAddress.Set(PortBytes);
 	m_nDataSocketPort = (PortBytes[4] << 8) + PortBytes[5];
 
+	// RFC 2577 §3: The IP address in PORT must match the control connection source address.
+	// Reject mismatches to prevent FTP bounce attacks.
+	const u8* pClientIP = m_pControlSocket->GetForeignIP();
+	if (pClientIP == nullptr ||
+	    PortBytes[0] != pClientIP[0] || PortBytes[1] != pClientIP[1] ||
+	    PortBytes[2] != pClientIP[2] || PortBytes[3] != pClientIP[3])
+	{
+		SendStatus(TFTPStatus::SyntaxError, "PORT address does not match client address.");
+		return false;
+	}
+
 #ifdef FTPDAEMON_DEBUG
 	CString IPAddressString;
 	m_DataSocketIPAddress.Format(&IPAddressString);

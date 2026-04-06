@@ -69,38 +69,47 @@ void CAudioMixer::SetEngineVolume(CSynthBase* pEngine, float fVolume)
 {
 	int idx = FindEngine(pEngine);
 	if (idx >= 0)
-		m_Engines[idx].fVolume = Clamp(fVolume, 0.0f, 1.0f);
+	{
+		const float v = Clamp(fVolume, 0.0f, 1.0f);
+		__atomic_store(&m_Engines[idx].fVolume, &v, __ATOMIC_RELAXED);
+	}
 }
 
 float CAudioMixer::GetEngineVolume(CSynthBase* pEngine) const
 {
 	int idx = FindEngine(pEngine);
-	return (idx >= 0) ? m_Engines[idx].fVolume : 0.0f;
+	if (idx < 0) return 0.0f;
+	float v; __atomic_load(&m_Engines[idx].fVolume, &v, __ATOMIC_RELAXED); return v;
 }
 
 void CAudioMixer::SetEnginePan(CSynthBase* pEngine, float fPan)
 {
 	int idx = FindEngine(pEngine);
 	if (idx >= 0)
-		m_Engines[idx].fPan = Clamp(fPan, -1.0f, 1.0f);
+	{
+		const float v = Clamp(fPan, -1.0f, 1.0f);
+		__atomic_store(&m_Engines[idx].fPan, &v, __ATOMIC_RELAXED);
+	}
 }
 
 float CAudioMixer::GetEnginePan(CSynthBase* pEngine) const
 {
 	int idx = FindEngine(pEngine);
-	return (idx >= 0) ? m_Engines[idx].fPan : 0.0f;
+	if (idx < 0) return 0.0f;
+	float v; __atomic_load(&m_Engines[idx].fPan, &v, __ATOMIC_RELAXED); return v;
 }
 
 void CAudioMixer::SetMasterVolume(float fVolume)
 {
-	m_fMasterVolume = Clamp(fVolume, 0.0f, 1.0f);
+	const float v = Clamp(fVolume, 0.0f, 1.0f);
+	__atomic_store(&m_fMasterVolume, &v, __ATOMIC_RELAXED);
 }
 
 void CAudioMixer::SetSoloEngine(CSynthBase* pEngine)
 {
 	// Only allow engines that are registered
 	if (FindEngine(pEngine) >= 0)
-		m_pSoloEngine = pEngine;
+		__atomic_store(&m_pSoloEngine, &pEngine, __ATOMIC_RELEASE);
 }
 
 void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfile)
@@ -116,20 +125,23 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
 	}
 
 	// Solo mode: render directly into the output buffer (no mixing overhead)
-	if (m_pSoloEngine)
+	CSynthBase* pSolo; __atomic_load(&m_pSoloEngine, &pSolo, __ATOMIC_ACQUIRE);
+	if (pSolo)
 	{
 		const unsigned nRenderStart = CTimer::GetClockTicks();
-		m_pSoloEngine->Render(pOutput, nFrames);
+		pSolo->Render(pOutput, nFrames);
 		const unsigned nRenderElapsed = CTimer::GetClockTicks() - nRenderStart;
 
 		// Apply per-engine volume and master volume
-		int idx = FindEngine(m_pSoloEngine);
+		int idx = FindEngine(pSolo);
 		if (pProfile && idx >= 0)
 			pProfile->nEngineRenderUs[idx] = nRenderElapsed;
 
 		const unsigned nMixStart = CTimer::GetClockTicks();
-		float fVol = (idx >= 0) ? m_Engines[idx].fVolume : 1.0f;
-		float fGain = fVol * m_fMasterVolume;
+		float fVol  = 1.0f;
+		if (idx >= 0) __atomic_load(&m_Engines[idx].fVolume, &fVol, __ATOMIC_RELAXED);
+		float fMasterVol; __atomic_load(&m_fMasterVolume, &fMasterVol, __ATOMIC_RELAXED);
+		float fGain = fVol * fMasterVol;
 		if (fGain < 1.0f)
 		{
 #ifdef __aarch64__
@@ -189,8 +201,8 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
 		// Instead use linear pan law that preserves level at center:
 		//   Left  gain = volume * min(1.0, 1.0 - pan)
 		//   Right gain = volume * min(1.0, 1.0 + pan)
-		const float fVol = slot.fVolume;
-		const float fPan = slot.fPan;
+		const float fVol = [&]{ float v; __atomic_load(&slot.fVolume, &v, __ATOMIC_RELAXED); return v; }();
+		const float fPan = [&]{ float v; __atomic_load(&slot.fPan,    &v, __ATOMIC_RELAXED); return v; }();
 		const float fGainL = fVol * (fPan < 0.0f ? 1.0f : 1.0f - fPan);
 		const float fGainR = fVol * (fPan > 0.0f ? 1.0f : 1.0f + fPan);
 
@@ -225,10 +237,11 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
 	}
 
 	// Apply master volume and clamp
+	float fMasterVol; __atomic_load(&m_fMasterVolume, &fMasterVol, __ATOMIC_RELAXED);
 	const unsigned nPostStart = CTimer::GetClockTicks();
 #ifdef __aarch64__
         {
-                float32x4_t vMaster = vdupq_n_f32(m_fMasterVolume);
+                float32x4_t vMaster = vdupq_n_f32(fMasterVol);
                 float32x4_t vMin    = vdupq_n_f32(-1.0f);
                 float32x4_t vMax    = vdupq_n_f32( 1.0f);
                 size_t i = 0;
@@ -242,14 +255,14 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
                 }
                 for (; i < nSamples; ++i)
                 {
-                        pOutput[i] *= m_fMasterVolume;
+                        pOutput[i] *= fMasterVol;
                         pOutput[i] = Clamp(pOutput[i], -1.0f, 1.0f);
                 }
         }
 #else
         for (size_t i = 0; i < nSamples; ++i)
         {
-                pOutput[i] *= m_fMasterVolume;
+                pOutput[i] *= fMasterVol;
                 pOutput[i] = Clamp(pOutput[i], -1.0f, 1.0f);
         }
 #endif
