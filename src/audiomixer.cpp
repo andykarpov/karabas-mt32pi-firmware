@@ -21,12 +21,9 @@
 //
 
 #include "audiomixer.h"
+#include "simdops.h"
 
 #include <circle/timer.h>
-
-#ifdef __aarch64__
-#include <arm_neon.h>
-#endif
 
 #ifndef UNIT_TEST
 #include "synth/synthbase.h"
@@ -143,22 +140,7 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
 		float fMasterVol; __atomic_load(&m_fMasterVolume, &fMasterVol, __ATOMIC_RELAXED);
 		float fGain = fVol * fMasterVol;
 		if (fGain < 1.0f)
-		{
-#ifdef __aarch64__
-			float32x4_t vGain = vdupq_n_f32(fGain);
-			size_t i = 0;
-			for (; i + 4 <= nSamples; i += 4)
-			{
-				float32x4_t v = vld1q_f32(pOutput + i);
-				vst1q_f32(pOutput + i, vmulq_f32(v, vGain));
-			}
-			for (; i < nSamples; ++i)
-				pOutput[i] *= fGain;
-#else
-			for (size_t i = 0; i < nSamples; ++i)
-				pOutput[i] *= fGain;
-#endif
-		}
+			SimdOps::ApplyGain(pOutput, nSamples, fGain);
 		nMixUs = CTimer::GetClockTicks() - nMixStart;
 		if (pProfile)
 			pProfile->nMixUs = nMixUs;
@@ -177,8 +159,10 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
 		return;
 	}
 
-	// Temp buffer for each engine's output (stack allocation, stereo interleaved)
-	float tempBuf[nSamples];
+	// Temp buffer for each engine's output (stereo interleaved).
+	// m_TempBuf is a pre-allocated member; avoids variable-length array on the
+	// baremetal audio-task stack where overflow is silent and catastrophic.
+	float* const tempBuf = m_TempBuf;
 
 	for (unsigned e = 0; e < m_nEngineCount; ++e)
 	{
@@ -208,64 +192,14 @@ void CAudioMixer::Render(float* pOutput, size_t nFrames, TRenderProfile* pProfil
 
 		// Mix into output
 		const unsigned nMixStart = CTimer::GetClockTicks();
-#ifdef __aarch64__
-		{
-			// Pack {gainL, gainR, gainL, gainR} for 4-float NEON load (2 stereo frames)
-			const float gainPairs[4] = { fGainL, fGainR, fGainL, fGainR };
-			float32x4_t vGains = vld1q_f32(gainPairs);
-			size_t i = 0;
-			for (; i + 4 <= nSamples; i += 4)
-			{
-				float32x4_t vOut  = vld1q_f32(pOutput + i);
-				float32x4_t vTemp = vld1q_f32(tempBuf  + i);
-				vst1q_f32(pOutput + i, vmlaq_f32(vOut, vTemp, vGains));
-			}
-			for (; i < nSamples; i += NumChannels)
-			{
-				pOutput[i]     += tempBuf[i]     * fGainL;
-				pOutput[i + 1] += tempBuf[i + 1] * fGainR;
-			}
-		}
-#else
-		for (size_t i = 0; i < nSamples; i += NumChannels)
-		{
-			pOutput[i]     += tempBuf[i]     * fGainL;
-			pOutput[i + 1] += tempBuf[i + 1] * fGainR;
-		}
-#endif
+		SimdOps::MixWithPanGain(pOutput, tempBuf, nSamples, fGainL, fGainR);
 		nMixUs += CTimer::GetClockTicks() - nMixStart;
 	}
 
 	// Apply master volume and clamp
 	float fMasterVol; __atomic_load(&m_fMasterVolume, &fMasterVol, __ATOMIC_RELAXED);
 	const unsigned nPostStart = CTimer::GetClockTicks();
-#ifdef __aarch64__
-        {
-                float32x4_t vMaster = vdupq_n_f32(fMasterVol);
-                float32x4_t vMin    = vdupq_n_f32(-1.0f);
-                float32x4_t vMax    = vdupq_n_f32( 1.0f);
-                size_t i = 0;
-                for (; i + 4 <= nSamples; i += 4)
-                {
-                        float32x4_t v = vld1q_f32(pOutput + i);
-                        v = vmulq_f32(v, vMaster);
-                        v = vmaxq_f32(v, vMin);
-                        v = vminq_f32(v, vMax);
-                        vst1q_f32(pOutput + i, v);
-                }
-                for (; i < nSamples; ++i)
-                {
-                        pOutput[i] *= fMasterVol;
-                        pOutput[i] = Clamp(pOutput[i], -1.0f, 1.0f);
-                }
-        }
-#else
-        for (size_t i = 0; i < nSamples; ++i)
-        {
-                pOutput[i] *= fMasterVol;
-                pOutput[i] = Clamp(pOutput[i], -1.0f, 1.0f);
-        }
-#endif
+	SimdOps::ApplyGainAndClamp(pOutput, nSamples, fMasterVol, -1.0f, 1.0f);
 	nMixUs += CTimer::GetClockTicks() - nPostStart;
 	if (pProfile)
 		pProfile->nMixUs = nMixUs;

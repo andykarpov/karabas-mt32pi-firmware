@@ -491,3 +491,69 @@ TEST_CASE("FluidSeq: callback unknown/meta type produces no bytes")
 	u8 buf[8];
 	CHECK(seq.DrainMIDIBytes(buf, sizeof(buf)) == 0u);
 }
+
+// ===========================================================================
+// Group 8: Partial drain and ring buffer behaviour
+// ===========================================================================
+
+TEST_CASE("FluidSeq: DrainMIDIBytes with small buffer returns partial result")
+{
+	FullReset();
+	CFluidSequencer seq;
+	REQUIRE(InitAndPlay(seq));
+
+	// Enqueue 3 CC events = 9 bytes total
+	for (int i = 0; i < 3; ++i)
+	{
+		fluid_midi_event_t ev{};
+		ev.type    = 0xB0;
+		ev.channel = 0;
+		ev.control = 7;
+		ev.value   = 64;
+		FluidStub_InvokeCallback(&ev);
+	}
+
+	// First drain: only 5 bytes fit
+	u8 buf[5];
+	const size_t n1 = seq.DrainMIDIBytes(buf, sizeof(buf));
+	CHECK(n1 == 5u);
+
+	// Second drain: 4 bytes remain
+	u8 buf2[16];
+	const size_t n2 = seq.DrainMIDIBytes(buf2, sizeof(buf2));
+	CHECK(n2 == 4u);
+
+	// Ring buffer is now empty
+	CHECK(seq.DrainMIDIBytes(buf2, sizeof(buf2)) == 0u);
+}
+
+TEST_CASE("FluidSeq: ring buffer overflow silently drops bytes beyond capacity")
+{
+	FullReset();
+	CFluidSequencer seq;
+	REQUIRE(InitAndPlay(seq));
+
+	// CRingBuffer<u8, 4096> holds at most 4095 bytes.
+	// Each NoteOn = 3 bytes.  Fill to just beyond the limit:
+	// 4095 / 3 = 1365 events fill it; the 1366th should overflow.
+	constexpr int kTotal = 1366;
+	for (int i = 0; i < kTotal; ++i)
+	{
+		fluid_midi_event_t ev{};
+		ev.type     = 0x90;
+		ev.channel  = 0;
+		ev.key      = 60;
+		ev.velocity = 64;
+		FluidStub_InvokeCallback(&ev);
+	}
+
+	// Drain everything available
+	u8 bigBuf[4096];
+	const size_t drained = seq.DrainMIDIBytes(bigBuf, sizeof(bigBuf));
+
+	// Exactly 4095 bytes should be available (ring buffer full condition)
+	CHECK(drained == 4095u);
+
+	// Buffer is empty now
+	CHECK(seq.DrainMIDIBytes(bigBuf, sizeof(bigBuf)) == 0u);
+}

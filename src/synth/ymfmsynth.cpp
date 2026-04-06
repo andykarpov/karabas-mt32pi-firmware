@@ -866,6 +866,46 @@ void CYmfmSynth::ProgramVoice(unsigned nVoice, const TOpl3Patch& patch, uint8_t 
     WriteReg(0xC0 + chanR, stereoBits | (patch.feedback & 0x0F));
 }
 
+void CYmfmSynth::UpdateVoiceFNumber(unsigned nVoice, uint8_t nNote, int8_t nNoteOffset, float nBendSemitones)
+{
+    const uint32_t bank = VoiceBankBase(nVoice);
+    const unsigned li   = VoiceLocalIdx(nVoice);
+    const uint32_t chanR = bank + kVoiceChanOffset[li];
+
+    // Apply note offset and pitch bend as a combined semitone float
+    float fNote = static_cast<float>((int)nNote + nNoteOffset) + nBendSemitones;
+    if (fNote < 0.0f) fNote = 0.0f;
+    if (fNote > 127.0f) fNote = 127.0f;
+
+    const int    noteInt  = static_cast<int>(fNote);
+    const float  frac     = fNote - static_cast<float>(noteInt);
+    const uint8_t block   = NoteBlock(static_cast<uint8_t>(noteInt));
+    const uint8_t semitone = static_cast<uint8_t>(noteInt % 12);
+
+    uint16_t fnum = kFNumTable[semitone];
+
+    // Interpolate toward the next semitone for smooth sub-semitone bends
+    if (frac > 0.0f)
+    {
+        const uint8_t nextSemitone = (semitone + 1) % 12;
+        uint16_t fnumNext = kFNumTable[nextSemitone];
+        // Crossing a C boundary means the next semitone is one octave higher
+        if (nextSemitone == 0) fnumNext = static_cast<uint16_t>(fnumNext << 1);
+        fnum = static_cast<uint16_t>(static_cast<float>(fnum) +
+               frac * static_cast<float>(fnumNext - fnum));
+    }
+
+    // Scale to the target block (kFNumTable is calibrated for block 4)
+    const int blockDelta = static_cast<int>(block) - 4;
+    if      (blockDelta > 0) fnum >>= blockDelta;
+    else if (blockDelta < 0) fnum <<= (-blockDelta);
+    if (fnum > 0x3FF) fnum = 0x3FF;
+
+    // Write new F-Number while keeping KEY ON bit set
+    WriteReg(0xA0 + chanR, fnum & 0xFF);
+    WriteReg(0xB0 + chanR, 0x20u | ((block & 0x07u) << 2) | ((fnum >> 8) & 0x03u));
+}
+
 void CYmfmSynth::KeyOn(unsigned nVoice, uint8_t nNote, int8_t nNoteOffset)
 {
     const uint32_t bank = VoiceBankBase(nVoice);
@@ -1089,9 +1129,27 @@ void CYmfmSynth::ProgramChange(uint8_t nChannel, uint8_t nProgram)
 void CYmfmSynth::PitchBend(uint8_t nChannel, uint16_t nValue)
 {
     m_Channels[nChannel].nPitchBend = nValue;
-    // For now: re-trigger active voices on this channel (simplified approach)
-    // A full implementation would adjust F-Number registers in real-time
-    // TODO: Phase 3.6 — update F-Number for active voices
+
+    // Convert 14-bit pitch bend to signed semitone offset
+    const TChannelState& ch = m_Channels[nChannel];
+    const float fBendSemitones =
+        (static_cast<float>(nValue) - 8192.0f) / 8192.0f *
+        static_cast<float>(ch.nPitchBendRange);
+
+    // Update F-Number registers for all active voices on this channel
+    // so pitch changes are heard immediately without re-triggering notes.
+    for (unsigned i = 0; i < m_nVoiceCount; ++i)
+    {
+        if (m_Voices[i].bFree || m_Voices[i].nMIDIChannel != nChannel)
+            continue;
+
+        // Retrieve the per-program note offset for this voice
+        int8_t noteOffset = 0;
+        if (nChannel != PERCUSSION_CHANNEL)
+            noteOffset = m_Patches[ch.nProgram & 0x7F].noteOffset;
+
+        UpdateVoiceFNumber(i, m_Voices[i].nNote, noteOffset, fBendSemitones);
+    }
 }
 
 void CYmfmSynth::AllNotesOff(uint8_t nChannel)

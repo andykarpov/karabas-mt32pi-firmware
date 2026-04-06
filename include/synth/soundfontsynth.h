@@ -109,9 +109,6 @@ private:
 #ifndef NDEBUG
 	void DumpFXSettings() const;
 #endif
-	bool ParseGMSysEx(const u8* pData, size_t nSize);
-	bool ParseRolandSysEx(const u8* pData, size_t nSize);
-	bool ParseYamahaSysEx(const u8* pData, size_t nSize);
 
 	fluid_settings_t* m_pSettings;
 	fluid_synth_t* m_pSynth;
@@ -139,6 +136,17 @@ private:
 	CSoundFontManager m_SoundFontManager;
 
 	static void FluidSynthLogCallback(int nLevel, const char* pMessage, void* pUser);
+
+	// Boilerplate helper: store the value, then apply it to FluidSynth under lock.
+	// fn receives (fluid_synth_t*, val).
+	template<typename T, typename Fn>
+	void ApplyFluidParam(T& member, T val, Fn fn)
+	{
+		member = val;
+		m_Lock.Acquire();
+		if (m_pSynth) fn(m_pSynth, val);
+		m_Lock.Release();
+	}
 };
 
 #endif

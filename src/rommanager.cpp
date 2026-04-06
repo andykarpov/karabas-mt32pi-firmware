@@ -26,7 +26,6 @@
 #include "rommanager.h"
 
 LOGMODULE("rommanager");
-const char* const Disks[] = { "SD", "USB" };
 const char ROMDirectory[] = "roms";
 
 // Custom File class for mt32emu
@@ -114,7 +113,7 @@ bool CROMManager::ScanROMs()
 		return true;
 
 	// Loop over each disk
-	for (auto pDisk : Disks)
+	for (auto pDisk : Utility::Volumes)
 	{
 		DirectoryPath.Format("%s:/%s", pDisk, ROMDirectory);
 		Result = f_findfirst(&Dir, &FileInfo, DirectoryPath, "*");

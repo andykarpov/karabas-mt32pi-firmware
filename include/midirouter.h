@@ -119,6 +119,18 @@ private:
 	CSynthBase*  m_pMT32;
 	CSynthBase*  m_pFluidSynth;
 	CSynthBase*  m_pYmfm;
+
+	// Count how many channels are assigned to each engine
+	void CountEngines(unsigned& nMT32, unsigned& nFluid, unsigned& nYmfm) const;
+
+	// Apply channel remap to the status byte of a message
+	u32  RemapMessage(u8 nChannel, u32 nMessage) const;
+	// Scale CC7 value by the per-channel volume multiplier
+	u32  ScaleCC7(u32 nMessage, u8 nChannel) const;
+	// Send a CC message to the target engine (+ layered engines) with filter and volume scaling
+	void DispatchCC(u32 nMessage, u8 nChannel, CSynthBase* pTarget);
+	// Broadcast a message to MT-32 and FluidSynth (used for sysrt and layered notes)
+	void BroadcastToEngines(u32 nMessage);
 };
 
 #endif

@@ -64,6 +64,8 @@ namespace Utility
 	// Function for performing a linear interpolation of a value
 	constexpr float Lerp(float nValue, float nMinA, float nMaxA, float nMinB, float nMaxB)
 	{
+		if (nMaxA == nMinA)
+			return nMinB;
 		return nMinB + (nValue - nMinA) * ((nMaxB - nMinB) / (nMaxA - nMinA));
 	}
 
@@ -107,6 +109,11 @@ namespace Utility
 
 		return 128 - nSum;
 	}
+
+	// Canonical set of storage volume prefixes shared by rommanager,
+	// soundfontmanager, and any future scanner that iterates SD + USB.
+	static constexpr const char* const Volumes[]  = { "SD", "USB" };
+	static constexpr size_t            VolumeCount = 2;
 
 	// Comparators for sorting
 	namespace Comparator

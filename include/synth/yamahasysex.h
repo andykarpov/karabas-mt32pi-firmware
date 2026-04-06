@@ -23,6 +23,8 @@
 #ifndef _yamahasysex_h
 #define _yamahasysex_h
 
+#include <cstddef>
+
 #include "synth/sysex.h"
 
 enum TYamahaModelID : u8
@@ -50,5 +52,22 @@ struct TYamahaSysExHeader
 	TYamahaModelID ModelID;
 	u8 Address[3];
 };
+
+// Result returned by ParseYamahaSysEx; display pointers refer into the original
+// SysEx buffer (valid only during HandleMIDISysExMessage).
+struct TYamahaSysExResult
+{
+	bool       bValid       = false;  // message was recognized
+	bool       bConsume     = false;  // do not forward to FluidSynth
+	bool       bReset       = false;  // XG System On (reset request)
+	bool       bDisplayText = false;
+	bool       bDisplayDots = false;
+	const u8*  pDisplayData = nullptr;
+	size_t     nDisplaySize = 0;
+	u8         nAddressLo   = 0;
+};
+
+// Parse a SysEx message and return a result struct; no side effects.
+TYamahaSysExResult ParseYamahaSysEx(const u8* pData, size_t nSize);
 
 #endif

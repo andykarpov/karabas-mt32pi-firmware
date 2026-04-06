@@ -23,6 +23,8 @@
 #ifndef _gmsysex_h
 #define _gmsysex_h
 
+#include <cstddef>
+
 #include "synth/sysex.h"
 
 enum class TGMSubID : u8
@@ -39,5 +41,14 @@ struct TGMSysExHeader
 	TGMSubID SubID2;
 }
 PACKED;
+
+// Result returned by ParseGMSysEx; contains no pointers into the input buffer.
+struct TGMSysExResult
+{
+	bool bReset = false;   // GM Mode On or Off was recognized
+};
+
+// Parse a SysEx message and return a result struct; no side effects.
+TGMSysExResult ParseGMSysEx(const u8* pData, size_t nSize);
 
 #endif

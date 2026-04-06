@@ -110,9 +110,32 @@ bool CConfig::Initialize(const char* pPath)
 	if (nResult > 0)
 		LOGWARN("Config parse error on line %d", nResult);
 
+	ValidateRanges();
+
 	f_close(&File);
 	return nResult >= 0;
 
+}
+
+void CConfig::ValidateRanges()
+{
+	using Utility::Clamp;
+
+	// Prevent division-by-zero or nonsensical values in the audio pipeline
+	AudioSampleRate     = Clamp(AudioSampleRate,     8000,  192000);
+	AudioChunkSize      = Clamp(AudioChunkSize,      32,    4096);
+
+	// FluidSynth polyphony: zero would deadlock; >2048 is unreasonable on Pi
+	FluidSynthPolyphony = Clamp(FluidSynthPolyphony, 1,     2048);
+
+	// TCP/UDP port numbers must be in the valid OS range
+	NetworkWebServerPort  = Clamp(NetworkWebServerPort,  1, 65535);
+	NetworkWebSocketPort  = Clamp(NetworkWebSocketPort,  1, 65535);
+	NetworkOSCPort        = Clamp(NetworkOSCPort,        1, 65535);
+
+	// EQ shelf gains: AudioFilter spec is ±12 dB
+	EffectsEQBassGain   = Clamp(EffectsEQBassGain,   -12, 12);
+	EffectsEQTrebleGain = Clamp(EffectsEQTrebleGain, -12, 12);
 }
 
 int CConfig::INIHandler(void* pUser, const char* pSection, const char* pName, const char* pValue)

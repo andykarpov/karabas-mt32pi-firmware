@@ -31,7 +31,6 @@
 #include "utility.h"
 
 LOGMODULE("soundfontmanager");
-const char* const Disks[] = { "SD", "USB" };
 const char SoundFontDirectory[] = "soundfonts";
 
 // Four-character codes used throughout SoundFont RIFF structure
@@ -73,7 +72,7 @@ bool CSoundFontManager::ScanSoundFonts()
 	CString DirectoryPath;
 
 	// Loop over each disk
-	for (auto pDisk : Disks)
+	for (auto pDisk : Utility::Volumes)
 	{
 		DirectoryPath.Format("%s:%s", pDisk, SoundFontDirectory);
 		Result = f_findfirst(&Dir, &FileInfo, DirectoryPath, "*");

@@ -35,8 +35,10 @@ class CSynthBase;
 class CAudioMixer
 {
 public:
-	static constexpr unsigned MaxEngines = 4;
+	static constexpr unsigned MaxEngines  = 4;
 	static constexpr unsigned NumChannels = 2;  // stereo
+	// Maximum frames per Render() call — covers any sane chunk size without VLA
+	static constexpr size_t   MaxFrames   = 2048;
 
 	struct TRenderProfile
 	{
@@ -105,6 +107,10 @@ private:
 	// Cross-core fields: Core 0 writes, Core 2 reads. Use __atomic_* builtins everywhere.
 	float        m_fMasterVolume;
 	CSynthBase*  m_pSoloEngine;
+
+	// Pre-allocated temp buffer used during multi-engine mix (avoids VLA on
+	// the baremetal audio-task stack).  alignas(16) keeps NEON loads aligned.
+	alignas(16) float m_TempBuf[MaxFrames * NumChannels];
 };
 
 #endif

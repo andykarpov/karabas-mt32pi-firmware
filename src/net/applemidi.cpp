@@ -120,28 +120,34 @@ u64 GetSyncClock()
 	return (nMicrosSinceEpoch - nStartTime ) / 100;
 }
 
-bool ParseInvitationPacket(const u8* pBuffer, size_t nSize, TAppleMIDISession* pOutPacket)
+// Validates the common 4-byte AppleMIDI header (signature + command) inline.
+// Returns false if nSize < nMinSize, signature != 0xFFFF, or command != nExpected.
+static bool ValidateAppleMIDIHeader(const u8* pBuffer, size_t nSize,
+                                    size_t nMinSize, u16 nExpectedCommand)
 {
-	const TAppleMIDISession* const pInPacket = reinterpret_cast<const TAppleMIDISession*>(pBuffer);
-
-	if (nSize < NamelessSessionPacketSize)
+	if (nSize < nMinSize)
 		return false;
-
-	const u16 nSignature = ntohs(pInPacket->nSignature);
+	const u16 nSignature = ntohs(*reinterpret_cast<const u16*>(pBuffer));
 	if (nSignature != AppleMIDISignature)
 		return false;
+	const u16 nCommand = ntohs(*reinterpret_cast<const u16*>(pBuffer + 2));
+	return nCommand == nExpectedCommand;
+}
 
-	const u16 nCommand = ntohs(pInPacket->nCommand);
-	if (nCommand != Invitation)
+bool ParseInvitationPacket(const u8* pBuffer, size_t nSize, TAppleMIDISession* pOutPacket)
+{
+	if (!ValidateAppleMIDIHeader(pBuffer, nSize, NamelessSessionPacketSize, Invitation))
 		return false;
+
+	const TAppleMIDISession* const pInPacket = reinterpret_cast<const TAppleMIDISession*>(pBuffer);
 
 	const u32 nVersion = ntohl(pInPacket->nVersion);
 	if (nVersion != AppleMIDIVersion)
 		return false;
 
-	pOutPacket->nSignature = nSignature;
-	pOutPacket->nCommand = nCommand;
-	pOutPacket->nVersion = nVersion;
+	pOutPacket->nSignature = ntohs(pInPacket->nSignature);
+	pOutPacket->nCommand   = ntohs(pInPacket->nCommand);
+	pOutPacket->nVersion   = nVersion;
 	pOutPacket->nInitiatorToken = ntohl(pInPacket->nInitiatorToken);
 	pOutPacket->nSSRC = ntohl(pInPacket->nSSRC);
 
@@ -155,26 +161,18 @@ bool ParseInvitationPacket(const u8* pBuffer, size_t nSize, TAppleMIDISession* p
 
 bool ParseEndSessionPacket(const u8* pBuffer, size_t nSize, TAppleMIDISession* pOutPacket)
 {
+	if (!ValidateAppleMIDIHeader(pBuffer, nSize, NamelessSessionPacketSize, EndSession))
+		return false;
+
 	const TAppleMIDISession* const pInPacket = reinterpret_cast<const TAppleMIDISession*>(pBuffer);
-
-	if (nSize < NamelessSessionPacketSize)
-		return false;
-
-	const u16 nSignature = ntohs(pInPacket->nSignature);
-	if (nSignature != AppleMIDISignature)
-		return false;
-
-	const u16 nCommand = ntohs(pInPacket->nCommand);
-	if (nCommand != EndSession)
-		return false;
 
 	const u32 nVersion = ntohl(pInPacket->nVersion);
 	if (nVersion != AppleMIDIVersion)
 		return false;
 
-	pOutPacket->nSignature = nSignature;
-	pOutPacket->nCommand = nCommand;
-	pOutPacket->nVersion = nVersion;
+	pOutPacket->nSignature = ntohs(pInPacket->nSignature);
+	pOutPacket->nCommand   = ntohs(pInPacket->nCommand);
+	pOutPacket->nVersion   = nVersion;
 	pOutPacket->nInitiatorToken = ntohl(pInPacket->nInitiatorToken);
 	pOutPacket->nSSRC = ntohl(pInPacket->nSSRC);
 
@@ -183,21 +181,13 @@ bool ParseEndSessionPacket(const u8* pBuffer, size_t nSize, TAppleMIDISession* p
 
 bool ParseSyncPacket(const u8* pBuffer, size_t nSize, TAppleMIDISync* pOutPacket)
 {
+	if (!ValidateAppleMIDIHeader(pBuffer, nSize, sizeof(TAppleMIDISync), Sync))
+		return false;
+
 	const TAppleMIDISync* const pInPacket = reinterpret_cast<const TAppleMIDISync*>(pBuffer);
 
-	if (nSize < sizeof(TAppleMIDISync))
-		return false;
-
-	const u32 nSignature = ntohs(pInPacket->nSignature);
-	if (nSignature != AppleMIDISignature)
-		return false;
-
-	const u32 nCommand = ntohs(pInPacket->nCommand);
-	if (nCommand != Sync)
-		return false;
-
-	pOutPacket->nSignature = nSignature;
-	pOutPacket->nCommand = nCommand;
+	pOutPacket->nSignature = ntohs(pInPacket->nSignature);
+	pOutPacket->nCommand   = ntohs(pInPacket->nCommand);
 	pOutPacket->nSSRC = ntohl(pInPacket->nSSRC);
 	pOutPacket->nCount = pInPacket->nCount;
 	pOutPacket->Timestamps[0] = ntohll(pInPacket->Timestamps[0]);

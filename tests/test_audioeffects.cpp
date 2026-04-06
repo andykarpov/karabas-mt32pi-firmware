@@ -278,3 +278,151 @@ TEST_CASE("CAudioEffects: GetConfig returns what was configured")
 	CHECK(out.fReverbDamping  == doctest::Approx(0.3f).epsilon(1e-5f));
 	CHECK(out.fReverbWet      == doctest::Approx(0.25f).epsilon(1e-5f));
 }
+
+// ---------------------------------------------------------------------------
+// Tests — EQ negative gain (cut)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CAudioEffects: EQ negative bass gain attenuates low-frequency signal")
+{
+	CAudioEffects fx;
+	CAudioEffects::TConfig cfg;
+	cfg.bEQEnabled  = true;
+	cfg.nBassGain   = -6;
+	cfg.nTrebleGain = 0;
+	fx.Configure(cfg, SR);
+
+	// Use a low-frequency (80 Hz) sine with enough frames to reach steady state.
+	constexpr size_t N = 4096;
+	float buf[N * 2];
+	float refBuf[N * 2];
+	FillSine(buf, N, 80.0f, 0.5f);
+	std::memcpy(refBuf, buf, sizeof(buf));
+
+	fx.Process(buf, N);
+
+	// Measure energy of the second half (skip transient warm-up)
+	float origEnergy = 0.0f;
+	float procEnergy = 0.0f;
+	for (size_t i = N / 2; i < N; ++i)
+	{
+		origEnergy += refBuf[i * 2] * refBuf[i * 2];
+		procEnergy += buf[i * 2]    * buf[i * 2];
+	}
+	CHECK(procEnergy < origEnergy);  // bass-cut attenuates energy
+}
+
+TEST_CASE("CAudioEffects: EQ negative treble gain attenuates high-frequency signal")
+{
+	CAudioEffects fx;
+	CAudioEffects::TConfig cfg;
+	cfg.bEQEnabled  = true;
+	cfg.nBassGain   = 0;
+	cfg.nTrebleGain = -6;
+	fx.Configure(cfg, SR);
+
+	// 8000 Hz sine — clearly in the treble band
+	constexpr size_t N = 4096;
+	float buf[N * 2];
+	float refBuf[N * 2];
+	FillSine(buf, N, 8000.0f, 0.5f);
+	std::memcpy(refBuf, buf, sizeof(buf));
+
+	fx.Process(buf, N);
+
+	float origEnergy = 0.0f;
+	float procEnergy = 0.0f;
+	for (size_t i = N / 2; i < N; ++i)
+	{
+		origEnergy += refBuf[i * 2] * refBuf[i * 2];
+		procEnergy += buf[i * 2]    * buf[i * 2];
+	}
+	CHECK(procEnergy < origEnergy);
+}
+
+// ---------------------------------------------------------------------------
+// Tests — Reverb with roomSize 0.0
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CAudioEffects: reverb with roomSize 0.0 has minimal tail")
+{
+	CAudioEffects fx;
+	CAudioEffects::TConfig cfg;
+	cfg.bReverbEnabled  = true;
+	cfg.fReverbRoomSize = 0.0f;
+	cfg.fReverbDamping  = 1.0f;
+	cfg.fReverbWet      = 1.0f;
+	fx.Configure(cfg, SR);
+
+	constexpr size_t N = 512;
+	float buf[N * 2];
+	FillConstant(buf, N, 0.0f, 0.0f);
+	buf[0] = 0.5f;
+	buf[1] = 0.5f;  // single impulse
+
+	fx.Process(buf, N);
+
+	// With roomSize=0 the reverb decays very quickly; tail energy after frame 128 should be tiny
+	float energy = 0.0f;
+	for (size_t i = 128; i < N; ++i)
+		energy += buf[i * 2] * buf[i * 2];
+
+	// Use the existing reverb test's energy as an upper bound reference:
+	// The full-room test had noticeable energy; with room=0 it should be negligible.
+	CHECK(energy < 0.1f);
+}
+
+// ---------------------------------------------------------------------------
+// Tests — Multiple Configure() calls
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CAudioEffects: second Configure overwrites first settings")
+{
+	CAudioEffects fx;
+
+	CAudioEffects::TConfig cfg1;
+	cfg1.bReverbEnabled  = true;
+	cfg1.fReverbRoomSize = 0.9f;
+	cfg1.fReverbWet      = 1.0f;
+	fx.Configure(cfg1, SR);
+
+	CAudioEffects::TConfig cfg2;
+	cfg2.bReverbEnabled = false;
+	cfg2.bEQEnabled     = true;
+	cfg2.nBassGain      = 3;
+	cfg2.nTrebleGain    = -2;
+	fx.Configure(cfg2, SR);
+
+	const auto& out = fx.GetConfig();
+	CHECK_FALSE(out.bReverbEnabled);
+	CHECK(out.bEQEnabled);
+	CHECK(out.nBassGain   == 3);
+	CHECK(out.nTrebleGain == -2);
+}
+
+// ---------------------------------------------------------------------------
+// Tests — Limiter symmetry
+// ---------------------------------------------------------------------------
+
+TEST_CASE("CAudioEffects: limiter is symmetric for positive and negative overload")
+{
+	CAudioEffects fxPos;
+	CAudioEffects fxNeg;
+	CAudioEffects::TConfig cfg;
+	cfg.bLimiterEnabled = true;
+	fxPos.Configure(cfg, SR);
+	fxNeg.Configure(cfg, SR);
+
+	constexpr size_t N = 8;
+	float bufPos[N * 2];
+	float bufNeg[N * 2];
+	FillConstant(bufPos, N,  2.0f,  2.0f);
+	FillConstant(bufNeg, N, -2.0f, -2.0f);
+
+	fxPos.Process(bufPos, N);
+	fxNeg.Process(bufNeg, N);
+
+	// Positive and negative overload must produce equal-and-opposite output
+	for (size_t i = 0; i < N * 2; ++i)
+		CHECK(bufPos[i] == doctest::Approx(-bufNeg[i]).epsilon(1e-4f));
+}

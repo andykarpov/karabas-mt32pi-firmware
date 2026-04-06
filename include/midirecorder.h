@@ -83,6 +83,7 @@ private:
 
         u8*      m_pBuf;
         u32      m_nBufPos;
+        unsigned m_nNextSlot;  // Next slot search starts here (O(1) amortised)
 };
 
 #endif // _midirecorder_h

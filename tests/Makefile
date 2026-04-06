@@ -16,6 +16,11 @@ CXXFLAGS  = -std=c++17 -Wall -Wextra -Wno-unused-parameter -g -O0
 CXXFLAGS += -I. -Istubs -Idoctest -I../include -I../external/inih -DUNIT_TEST
 CFLAGS    = -std=c99 -I../external/inih
 
+# All compiled objects go here, mirroring the source tree.
+# This prevents host-native .o files from polluting ../src/ and
+# conflicting with the AArch64 cross-build.
+OBJDIR    = build
+
 # C++ source files -- add new test_*.cpp here
 SRCS      = test_main.cpp \
             test_midirouter.cpp \
@@ -35,15 +40,18 @@ SRCS      = test_main.cpp \
             ../src/playlist.cpp \
             test_osc.cpp \
             ../src/net/oscdaemon.cpp \
+            test_applemidi.cpp \
+            ../src/net/applemidi.cpp \
             stubs/fluidsynth_stub.cpp \
             stubs/fatfs_stub.cpp
 
 # C source files (inih)
 CFILES    = ../external/inih/ini.c
 
-OBJS      = $(SRCS:.cpp=.o)
-COBJS     = $(CFILES:.c=.o)
-TARGET    = run_tests
+# Map source paths → $(OBJDIR)/<mirrored_path>.o  (stripping leading ../)
+OBJS   = $(addprefix $(OBJDIR)/,$(subst ../,,$(SRCS:.cpp=.o)))
+COBJS  = $(addprefix $(OBJDIR)/,$(subst ../,,$(CFILES:.c=.o)))
+TARGET = run_tests
 
 .PHONY: all run clean
 
@@ -56,11 +64,20 @@ run: $(TARGET)
 $(TARGET): $(OBJS) $(COBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-%.o: %.cpp
+# Local sources: test_*.cpp, stubs/*.cpp
+$(OBJDIR)/%.o: %.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-%.o: %.c
+# Sources under ../  (../src/*.cpp, ../src/net/*.cpp, etc.)
+$(OBJDIR)/%.o: ../%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+# C sources under ../  (../external/inih/ini.c)
+$(OBJDIR)/%.o: ../%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(COBJS) $(TARGET)
+	rm -rf $(OBJDIR) $(TARGET)

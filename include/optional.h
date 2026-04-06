@@ -24,7 +24,6 @@
 #define _optional_h
 
 #include <assert.h>
-#include <circle/new.h>
 #include <circle/types.h>
 
 template<typename T>
@@ -40,14 +39,16 @@ public:
 		: m_bSet(false)
 	{
 		if (Other.m_bSet)
-			new(reinterpret_cast<T*>(m_Value)) T(*reinterpret_cast<const T*>(Other.m_Value));
-		m_bSet = Other.m_bSet;
+		{
+			*reinterpret_cast<T*>(m_Value) = *reinterpret_cast<const T*>(Other.m_Value);
+			m_bSet = true;
+		}
 	}
 
 	explicit TOptional(T&& Value)
+		: m_bSet(true)
 	{
-		m_bSet = true;
-		new(reinterpret_cast<T*>(m_Value)) T(static_cast<T&&>(Value));
+		*reinterpret_cast<T*>(m_Value) = static_cast<T&&>(Value);
 	}
 
 	explicit TOptional(TOptional<T>&& Other)
@@ -55,7 +56,7 @@ public:
 	{
 		if (Other.m_bSet)
 		{
-			new(reinterpret_cast<T*>(m_Value)) T(static_cast<T&&>(*reinterpret_cast<T*>(Other.m_Value)));
+			*reinterpret_cast<T*>(m_Value) = static_cast<T&&>(*reinterpret_cast<T*>(Other.m_Value));
 			m_bSet = true;
 			Other.Reset();
 		}
@@ -65,11 +66,7 @@ public:
 
 	void Reset()
 	{
-		if (m_bSet)
-		{
-			m_bSet = false;
-			reinterpret_cast<T*>(m_Value)->T::~T();
-		}
+		m_bSet = false;
 	}
 
 	constexpr const T& Value() const
@@ -92,24 +89,19 @@ public:
 	{
 		if (this == &Other)
 			return *this;
-		if (m_bSet && Other.m_bSet)
-			*reinterpret_cast<T*>(m_Value) = *reinterpret_cast<const T*>(Other.m_Value);
-		else if (m_bSet && !Other.m_bSet)
-			Reset();
-		else if (!m_bSet && Other.m_bSet)
+		if (Other.m_bSet)
 		{
-			new(reinterpret_cast<T*>(m_Value)) T(*reinterpret_cast<const T*>(Other.m_Value));
+			*reinterpret_cast<T*>(m_Value) = *reinterpret_cast<const T*>(Other.m_Value);
 			m_bSet = true;
 		}
+		else
+			Reset();
 		return *this;
 	}
 
 	TOptional<T>& operator =(const T& Value)
 	{
-		if (m_bSet)
-			*reinterpret_cast<T*>(m_Value) = Value;
-		else
-			new(reinterpret_cast<T*>(m_Value)) T(Value);
+		*reinterpret_cast<T*>(m_Value) = Value;
 		m_bSet = true;
 		return *this;
 	}

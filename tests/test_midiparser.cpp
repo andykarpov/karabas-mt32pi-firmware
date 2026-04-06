@@ -404,3 +404,141 @@ TEST_CASE("Parser: byte-at-a-time SysEx")
 	REQUIRE(p.Events.size() == 1);
 	CHECK(p.Events[0].bSysEx);
 }
+
+// ---------------------------------------------------------------
+// Running status after SysEx
+// ---------------------------------------------------------------
+
+TEST_CASE("Parser: running status is cleared after complete SysEx")
+{
+	CTestParser p;
+
+	// Establish running status via CC
+	const u8 cc[] = {0xB0, 0x07, 0x64};
+	p.ParseMIDIBytes(cc, sizeof(cc));
+	REQUIRE(p.Events.size() == 1);
+
+	// Complete SysEx — should clear running status
+	const u8 sysex[] = {0xF0, 0x41, 0x10, 0xF7};
+	p.ParseMIDIBytes(sysex, sizeof(sysex));
+	REQUIRE(p.Events.size() == 2);
+	CHECK(p.Events[1].bSysEx);
+
+	// Data bytes that would have matched running status must not fire
+	const u8 data[] = {0x0A, 0x40};
+	p.ParseMIDIBytes(data, sizeof(data));
+	CHECK(p.Events.size() == 2);  // no new event
+}
+
+// ---------------------------------------------------------------
+// SysEx split across 3+ calls
+// ---------------------------------------------------------------
+
+TEST_CASE("Parser: SysEx split across three calls assembles correctly")
+{
+	CTestParser p;
+	const u8 part1[] = {0xF0, 0x43};
+	const u8 part2[] = {0x10, 0x4C};
+	const u8 part3[] = {0x00, 0xF7};
+
+	p.ParseMIDIBytes(part1, sizeof(part1));
+	CHECK(p.Events.empty());
+
+	p.ParseMIDIBytes(part2, sizeof(part2));
+	CHECK(p.Events.empty());
+
+	p.ParseMIDIBytes(part3, sizeof(part3));
+	REQUIRE(p.Events.size() == 1);
+	CHECK(p.Events[0].bSysEx);
+	CHECK(p.Events[0].sysex.size() == 6);
+	CHECK(p.Events[0].sysex[0] == 0xF0);
+	CHECK(p.Events[0].sysex[5] == 0xF7);
+}
+
+// ---------------------------------------------------------------
+// System Common messages with 2 bytes
+// ---------------------------------------------------------------
+
+TEST_CASE("Parser: Song Select (0xF3) produces 2-byte event and clears running status")
+{
+	CTestParser p;
+
+	// Establish running status
+	const u8 cc[] = {0xB0, 0x07, 0x64};
+	p.ParseMIDIBytes(cc, sizeof(cc));
+	REQUIRE(p.Events.size() == 1);
+
+	// Song Select: F3 <song>
+	const u8 songSelect[] = {0xF3, 0x05};
+	p.ParseMIDIBytes(songSelect, sizeof(songSelect));
+	REQUIRE(p.Events.size() == 2);
+	CHECK(p.Events[1].nMsg == Msg3(0xF3, 0x05, 0x00));
+
+	// Running status must be cleared after Song Select
+	const u8 data[] = {0x07, 0x32};
+	p.ParseMIDIBytes(data, sizeof(data));
+	CHECK(p.Events.size() == 2);  // no new event
+}
+
+TEST_CASE("Parser: Quarter Frame (0xF1) produces 2-byte event and clears running status")
+{
+	CTestParser p;
+
+	// Establish running status
+	const u8 cc[] = {0xB0, 0x07, 0x64};
+	p.ParseMIDIBytes(cc, sizeof(cc));
+	REQUIRE(p.Events.size() == 1);
+
+	// Quarter Frame: F1 <data>
+	const u8 qf[] = {0xF1, 0x20};
+	p.ParseMIDIBytes(qf, sizeof(qf));
+	REQUIRE(p.Events.size() == 2);
+	CHECK(p.Events[1].nMsg == Msg3(0xF1, 0x20, 0x00));
+
+	// Running status must be cleared
+	const u8 data[] = {0x07, 0x64};
+	p.ParseMIDIBytes(data, sizeof(data));
+	CHECK(p.Events.size() == 2);  // no new event
+}
+
+// ---------------------------------------------------------------
+// Undefined System Common: 0xF4, 0xF5
+// ---------------------------------------------------------------
+
+TEST_CASE("Parser: 0xF4 produces no event and clears running status")
+{
+	CTestParser p;
+
+	// Establish running status
+	const u8 noteOn[] = {0x90, 0x3C, 0x7F};
+	p.ParseMIDIBytes(noteOn, sizeof(noteOn));
+	REQUIRE(p.Events.size() == 1);
+
+	const u8 f4 = 0xF4;
+	p.ParseMIDIBytes(&f4, 1);
+	CHECK(p.Events.size() == 1);  // no new event
+
+	// Running status should be cleared: data bytes alone must not fire
+	const u8 data[] = {0x40, 0x7F};
+	p.ParseMIDIBytes(data, sizeof(data));
+	CHECK(p.Events.size() == 1);
+}
+
+TEST_CASE("Parser: 0xF5 produces no event and clears running status")
+{
+	CTestParser p;
+
+	// Establish running status
+	const u8 cc[] = {0xB0, 0x07, 0x64};
+	p.ParseMIDIBytes(cc, sizeof(cc));
+	REQUIRE(p.Events.size() == 1);
+
+	const u8 f5 = 0xF5;
+	p.ParseMIDIBytes(&f5, 1);
+	CHECK(p.Events.size() == 1);  // no new event
+
+	// Running status should be cleared
+	const u8 data[] = {0x0A, 0x40};
+	p.ParseMIDIBytes(data, sizeof(data));
+	CHECK(p.Events.size() == 1);
+}
