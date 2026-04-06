@@ -67,7 +67,7 @@ constexpr u32 MisterUpdatePeriodMillis             = 50;
 constexpr u32 LEDTimeoutMillis                     = 50;
 constexpr u32 ActiveSenseTimeoutMillis             = 330;
 
----// 24-bit signed audio: max positive value = 2^23 - 1 = 8388607.
+// 24-bit signed audio: max positive value = 2^23 - 1 = 8388607.
 // The original expression (1 << 24 - 1) - 1 evaluates as (1 << 23) - 1 due
 // to operator precedence (subtraction before shift), which gives the correct
 // value by coincidence.  Written explicitly for clarity.
