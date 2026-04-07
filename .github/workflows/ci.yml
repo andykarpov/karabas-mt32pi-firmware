@@ -338,9 +338,10 @@ jobs:
           ZIP_FILE="$(ls -1 mt32-pi-*.zip | head -n 1)"
           TAG="${GITHUB_REF_NAME}"
           TITLE="mt32-pi-rt ${TAG}"
+          REPO="${GITHUB_REPOSITORY}"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ZIP_FILE" --clobber
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP_FILE" --repo "$REPO" --clobber
           else
-            gh release create "$TAG" "$ZIP_FILE" --title "$TITLE" --generate-notes
+            gh release create "$TAG" "$ZIP_FILE" --repo "$REPO" --title "$TITLE" --generate-notes
           fi
