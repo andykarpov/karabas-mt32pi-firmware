@@ -68,6 +68,7 @@
 #include "ringbuffer.h"
 #include "audiomixer.h"
 #include "audioeffects.h"
+#include "hdmiout.h"
 #include "midirouter.h"
 #include "midimonitor.h"
 #include "midirecorder.h"
@@ -423,6 +424,7 @@ private:
 	void MainTask();
 	void UITask();
 	void AudioTask();
+	void VideoTask();   ///< Core 3 — HDMI display output
 
 
 	void UpdateUSB(bool bStartup = false);
@@ -531,6 +533,9 @@ private:
 	CMIDIRouter   m_MIDIRouter;
 	CAudioMixer   m_AudioMixer;
 	CAudioEffects m_AudioEffects;
+
+	// HDMI visual display (Core 3)
+	CHdmiOutput   m_HdmiOutput;
 	volatile bool m_bMixerEnabled;
 
 	// Audio render performance monitor (Core 2 writes, Core 0 reads)
