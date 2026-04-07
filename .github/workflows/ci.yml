@@ -9,7 +9,7 @@ on:
       - "fix/**"
       - "test/**"
     tags:
-      - "*-rt"
+      - "v*"
   pull_request:
   workflow_dispatch:
 
@@ -319,7 +319,7 @@ jobs:
   release:
     needs: package
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-rt')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && startsWith(github.ref_name, 'v')
     permissions:
       contents: write
 
