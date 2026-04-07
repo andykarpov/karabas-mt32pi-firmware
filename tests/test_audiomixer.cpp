@@ -490,3 +490,76 @@ TEST_CASE("Mixer: render with zero volume produces silence")
 	for (size_t i = 0; i < nFrames * 2; ++i)
 		CHECK(output[i] == doctest::Approx(0.0f));
 }
+
+TEST_CASE("Mixer: render with zero frames does not crash or modify buffer")
+{
+	CSynthBaseStub a("A", TSynth::MT32, 1.0f);
+	CAudioMixer mixer;
+	mixer.AddEngine(&a);
+	mixer.SetEngineVolume(&a, 1.0f);
+	mixer.SetMasterVolume(1.0f);
+
+	float sentinel = 42.0f;
+	mixer.Render(&sentinel, 0);
+	CHECK(sentinel == doctest::Approx(42.0f));
+}
+
+TEST_CASE("Mixer: all MaxEngines engines render and sum correctly")
+{
+	CSynthBaseStub e0("E0", TSynth::MT32,      0.1f);
+	CSynthBaseStub e1("E1", TSynth::SoundFont, 0.1f);
+	CSynthBaseStub e2("E2", TSynth::MT32,      0.1f);
+	CSynthBaseStub e3("E3", TSynth::SoundFont, 0.1f);
+	CAudioMixer mixer;
+	mixer.AddEngine(&e0);
+	mixer.AddEngine(&e1);
+	mixer.AddEngine(&e2);
+	mixer.AddEngine(&e3);
+	mixer.SetEngineVolume(&e0, 1.0f);
+	mixer.SetEngineVolume(&e1, 1.0f);
+	mixer.SetEngineVolume(&e2, 1.0f);
+	mixer.SetEngineVolume(&e3, 1.0f);
+	mixer.SetMasterVolume(1.0f);
+
+	constexpr size_t nFrames = 16;
+	float output[nFrames * 2];
+	mixer.Render(output, nFrames);
+
+	// 4 engines × 0.1 = 0.4 on every sample
+	for (size_t i = 0; i < nFrames * 2; ++i)
+		CHECK(output[i] == doctest::Approx(0.4f));
+}
+
+TEST_CASE("Mixer: dynamic solo engine change takes effect on next render")
+{
+	CSynthBaseStub a("A", TSynth::MT32,      0.3f);
+	CSynthBaseStub b("B", TSynth::SoundFont, 0.7f);
+	CAudioMixer mixer;
+	mixer.AddEngine(&a);
+	mixer.AddEngine(&b);
+	mixer.SetEngineVolume(&a, 1.0f);
+	mixer.SetEngineVolume(&b, 1.0f);
+	mixer.SetMasterVolume(1.0f);
+
+	constexpr size_t nFrames = 8;
+	float output[nFrames * 2];
+
+	// Solo A
+	mixer.SetSoloEngine(&a);
+	mixer.Render(output, nFrames);
+	for (size_t i = 0; i < nFrames * 2; ++i)
+		CHECK(output[i] == doctest::Approx(0.3f));
+
+	// Switch solo to B — should take effect immediately
+	mixer.SetSoloEngine(&b);
+	mixer.Render(output, nFrames);
+	for (size_t i = 0; i < nFrames * 2; ++i)
+		CHECK(output[i] == doctest::Approx(0.7f));
+}
+
+TEST_CASE("Mixer: master volume clamped to 0 for negative input")
+{
+	CAudioMixer mixer;
+	mixer.SetMasterVolume(-1.0f);
+	CHECK(mixer.GetMasterVolume() == doctest::Approx(0.0f));
+}

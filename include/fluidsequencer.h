@@ -79,8 +79,23 @@ public:
 	// Must be called frequently from Core 0 (e.g., from UpdateMIDI).
 	void Tick();
 
-	// Diagnostic string for web-visible debugging
-	const char* GetDiag() const { return m_szDiag; }
+	// Sequencer state (shown on web dashboard / diagnostics).
+	// ESeqState encodes the last significant step or failure.
+	// GetLastError() returns the last FatFS FRESULT or FLUID_* status code.
+	enum class ESeqState
+	{
+		Idle,
+		CreatingPlayer,
+		OpeningFile,
+		ReadingFile,
+		LoadingData,
+		Playing,
+		Failed,
+	};
+
+	const char* GetDiag()     const;
+	ESeqState   GetState()    const { return m_eState; }
+	int         GetLastError() const { return m_nLastError; }
 
 private:
 	// Static callback for fluid_player_set_playback_callback.
@@ -94,8 +109,9 @@ private:
 	int             m_nLoopCount; // -1 = infinite, 1 = play once (default)
 	unsigned        m_nStartTicks; // system clock ticks when play started
 
-	// Diagnostic buffer for web-visible debugging
-	char m_szDiag[256];
+	// Sequencer state
+	ESeqState       m_eState;
+	int             m_nLastError; // last FatFS FRESULT or FLUID_* status code
 
 	// Ring buffer: written from PlaybackCallback (called from Core 0 Tick()),
 	// read from Core 0 (UpdateMIDI drain loop).

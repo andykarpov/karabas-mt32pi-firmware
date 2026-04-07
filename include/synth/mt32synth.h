@@ -137,6 +137,7 @@ private:
 	u32 m_nPartialCount;
 
 	bool ReopenCurrentROMSet();
+	void ApplySynthSettings();
 
 	TResamplerQuality m_ResamplerQuality;
 	MT32Emu::SampleRateConverter* m_pSampleRateConverter;

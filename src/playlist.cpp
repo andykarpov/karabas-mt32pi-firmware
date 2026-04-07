@@ -180,11 +180,28 @@ int CPlaylist::BuildJSON(char* buf, unsigned nSize) const
 
 	for (unsigned i = 0; i < m_nCount; ++i)
 	{
-		// Paths are SD:/file.mid or USB:/file.mid — no chars that need escaping
-		int added = snprintf(buf + n, nSize - n,
-			"%s\"%s\"", i > 0 ? "," : "", m_Entries[i]);
-		if (added <= 0 || (unsigned)(n + added) >= nSize) return -1;
-		n += added;
+		if ((unsigned)n + 3 >= nSize) return -1;  // at minimum: comma, '"', '"'
+		if (i > 0)
+			buf[n++] = ',';
+		buf[n++] = '"';
+
+		// Escape '"' and '\' so any path with unusual characters is valid JSON.
+		for (const char* p = m_Entries[i]; *p; ++p)
+		{
+			if (*p == '"' || *p == '\\')
+			{
+				if ((unsigned)n + 2 >= nSize) return -1;
+				buf[n++] = '\\';
+			}
+			else if ((unsigned)n + 1 >= nSize)
+			{
+				return -1;
+			}
+			buf[n++] = *p;
+		}
+
+		if ((unsigned)n + 1 >= nSize) return -1;
+		buf[n++] = '"';
 	}
 
 	if ((unsigned)n + 2 >= nSize) return -1;

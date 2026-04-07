@@ -119,6 +119,7 @@ public:
 	static bool ParseOption(const char* pString, TYmfmChip* pOut);
 
 private:
+	void ValidateRanges();
 	static int INIHandler(void* pUser, const char* pSection, const char* pName, const char* pValue);
 
 	static CConfig* s_pThis;

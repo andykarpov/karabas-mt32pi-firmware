@@ -1,5 +1,5 @@
 //
-// gmsysex.h
+// version.h
 //
 // mt32-pi - A baremetal MIDI synthesizer for Raspberry Pi
 // Copyright (C) 2020-2023 Dale Whinham <daleyo@gmail.com>
@@ -20,35 +20,9 @@
 // mt32-pi. If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef _gmsysex_h
-#define _gmsysex_h
+#ifndef _version_h
+#define _version_h
 
-#include <cstddef>
-
-#include "synth/sysex.h"
-
-enum class TGMSubID : u8
-{
-	GeneralMIDIOn  = 0x01,
-	GeneralMIDIOff = 0x02,
-};
-
-struct TGMSysExHeader
-{
-	TManufacturerID ManufacturerID;
-	TDeviceID DeviceID;
-	TUniversalSubID SubID1;
-	TGMSubID SubID2;
-}
-PACKED;
-
-// Result returned by ParseGMSysEx; contains no pointers into the input buffer.
-struct TGMSysExResult
-{
-	bool bReset = false;   // GM Mode On or Off was recognized
-};
-
-// Parse a SysEx message and return a result struct; no side effects.
-TGMSysExResult ParseGMSysEx(const u8* pData, size_t nSize);
+#define MT32_PI_NAME "mt32-pi-rt"
 
 #endif

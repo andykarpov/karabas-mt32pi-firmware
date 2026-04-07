@@ -26,25 +26,6 @@
 #include <cstddef>
 
 // ---------------------------------------------------------------------------
-// Biquad filter — transposed direct form II
-// Coefficients computed externally (ComputeLowShelf / ComputeHighShelf).
-// ---------------------------------------------------------------------------
-struct TBiquad
-{
-	float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f;
-	float              a1 = 0.0f, a2 = 0.0f;
-	float z1 = 0.0f, z2 = 0.0f;
-
-	float Process(float x)
-	{
-		float y = b0 * x + z1;
-		z1 = b1 * x - a1 * y + z2;
-		z2 = b2 * x - a2 * y;
-		return y;
-	}
-};
-
-// ---------------------------------------------------------------------------
 // CAudioEffects — post-mix signal processing chain:
 //   1. EQ      — two biquad shelving filters (bass low-shelf + treble high-shelf)
 //   2. Reverb  — Freeverb (Schroeder-Moorer comb + allpass network)
@@ -93,9 +74,32 @@ public:
 	const TConfig& GetConfig() const { return m_Config; }
 
 private:
-	// Audio EQ Cookbook (R. Bristow-Johnson) — S = 1 shelf slope
-	static void ComputeLowShelf (TBiquad& f, float fFreqHz, float fGainDb, float fSr);
-	static void ComputeHighShelf(TBiquad& f, float fFreqHz, float fGainDb, float fSr);
+	// Biquad filter — transposed direct form II.
+	// Kept private: callers have no need to inspect coefficients or state.
+	struct TBiquad
+	{
+		float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f;
+		float              a1 = 0.0f, a2 = 0.0f;
+		float z1 = 0.0f, z2 = 0.0f;
+
+		float Process(float x)
+		{
+			float y = b0 * x + z1;
+			z1 = b1 * x - a1 * y + z2;
+			z2 = b2 * x - a2 * y;
+			return y;
+		}
+	};
+
+	enum class EShelfType { Low, High };
+
+	// Audio EQ Cookbook (R. Bristow-Johnson) — unified low/high shelf, S = 1.
+	// s = +1 → low shelf; s = −1 → high shelf.
+	static void ComputeShelfCoeff(EShelfType type, TBiquad& f, float fFreqHz, float fGainDb, float fSr);
+
+	void ProcessEQ     (float& xL, float& xR);
+	void ProcessReverb (float& xL, float& xR, float fWet);
+	void ProcessLimiter(float& xL, float& xR);
 
 	// Freeverb LBCF comb filter (lowpass-feedback comb)
 	struct TComb

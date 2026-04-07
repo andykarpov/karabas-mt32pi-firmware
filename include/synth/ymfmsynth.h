@@ -120,6 +120,11 @@ private:
     void KeyOn(unsigned nVoice, uint8_t nNote, int8_t nNoteOffset);
     void KeyOff(unsigned nVoice);
 
+    // Recompute and write F-Number registers for a playing voice.
+    // nBendSemitones is a signed fractional offset (e.g. +2.5 = 2.5 semitones up).
+    // KEY ON bit is preserved so the note keeps sounding.
+    void UpdateVoiceFNumber(unsigned nVoice, uint8_t nNote, int8_t nNoteOffset, float nBendSemitones);
+
     // Bank loading — dispatches by file extension
     bool LoadWOPLBank(const char* pPath);   // WOPL v2 format
     bool LoadOP2Bank(const char* pPath);    // DOOM GENMIDI (.op2) format

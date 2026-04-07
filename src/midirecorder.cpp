@@ -48,8 +48,9 @@ CMidiRecorder::CMidiRecorder()
         : m_bRecording(false)
         , m_bFirstEvent(true)
         , m_nLastTicks(0)
-        , m_pBuf(nullptr)
+        , m_pBuf(new u8[MaxBufSize])  // pre-allocate once; avoids alloc on the hot path
         , m_nBufPos(0)
+        , m_nNextSlot(1)
 {
         m_szPath[0] = '\0';
 }
@@ -58,6 +59,7 @@ CMidiRecorder::~CMidiRecorder()
 {
         if (m_bRecording)
                 Stop();
+        delete[] m_pBuf;
 }
 
 bool CMidiRecorder::Start()
@@ -65,15 +67,24 @@ bool CMidiRecorder::Start()
         if (m_bRecording)
                 return false;
 
-        // Find the next unused SD:recording_NNN.mid slot
-        bool bFound = false;
-        for (int i = 1; i <= 999; ++i)
+        if (!m_pBuf)
         {
+                LOGERR("CMidiRecorder: buffer unavailable");
+                return false;
+        }
+
+        // Find next unused slot starting from m_nNextSlot; avoids re-scanning
+        // all 999 slots on repeated Start/Stop cycles.
+        bool bFound = false;
+        for (int offset = 0; offset < 999; ++offset)
+        {
+                const int i = ((static_cast<int>(m_nNextSlot) - 1 + offset) % 999) + 1;
                 __builtin_snprintf(m_szPath, sizeof(m_szPath),
                         "SD:recording_%03d.mid", i);
                 FILINFO fno;
                 if (f_stat(m_szPath, &fno) != FR_OK)
                 {
+                        m_nNextSlot = static_cast<unsigned>(i % 999) + 1;
                         bFound = true;
                         break;
                 }
@@ -83,14 +94,6 @@ bool CMidiRecorder::Start()
                 // All 999 slots used — overwrite the last
                 __builtin_snprintf(m_szPath, sizeof(m_szPath),
                         "SD:recording_999.mid");
-        }
-
-        m_pBuf = new u8[MaxBufSize];
-        if (!m_pBuf)
-        {
-                LOGERR("CMidiRecorder: buffer alloc failed (%u bytes)",
-                        static_cast<unsigned>(MaxBufSize));
-                return false;
         }
 
         m_nBufPos    = 0;
@@ -164,8 +167,6 @@ void CMidiRecorder::Stop()
                 LOGERR("CMidiRecorder: f_open failed for %s", m_szPath);
         }
 
-        delete[] m_pBuf;
-        m_pBuf    = nullptr;
         m_nBufPos = 0;
 }
 

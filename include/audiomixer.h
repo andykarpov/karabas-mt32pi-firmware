@@ -35,8 +35,10 @@ class CSynthBase;
 class CAudioMixer
 {
 public:
-	static constexpr unsigned MaxEngines = 4;
+	static constexpr unsigned MaxEngines  = 4;
 	static constexpr unsigned NumChannels = 2;  // stereo
+	// Maximum frames per Render() call — covers any sane chunk size without VLA
+	static constexpr size_t   MaxFrames   = 2048;
 
 	struct TRenderProfile
 	{
@@ -57,7 +59,10 @@ public:
 
 	// Master controls
 	void SetMasterVolume(float fVolume);
-	float GetMasterVolume() const { return m_fMasterVolume; }
+	float GetMasterVolume() const
+	{
+		float v; __atomic_load(&m_fMasterVolume, &v, __ATOMIC_RELAXED); return v;
+	}
 
 	// Render mixed audio (stereo interleaved, nFrames = number of sample frames)
 	// pOutput must have space for nFrames * NumChannels floats
@@ -66,8 +71,15 @@ public:
 	// If only one engine should render (single mode optimization),
 	// set this to bypass mixing overhead
 	void SetSoloEngine(CSynthBase* pEngine);
-	void ClearSoloEngine() { m_pSoloEngine = nullptr; }
-	CSynthBase* GetSoloEngine() const { return m_pSoloEngine; }
+	void ClearSoloEngine()
+	{
+		CSynthBase* p = nullptr;
+		__atomic_store(&m_pSoloEngine, &p, __ATOMIC_RELEASE);
+	}
+	CSynthBase* GetSoloEngine() const
+	{
+		CSynthBase* p; __atomic_load(&m_pSoloEngine, &p, __ATOMIC_ACQUIRE); return p;
+	}
 	CSynthBase* GetEngine(unsigned nIndex) const
 	{
 		return nIndex < m_nEngineCount ? m_Engines[nIndex].pEngine : nullptr;
@@ -78,19 +90,27 @@ public:
 private:
 	struct TEngineSlot
 	{
-		CSynthBase*    pEngine;
-		volatile float fVolume;   // 0.0 – 1.0   (written Core 0, read Core 2)
-		volatile float fPan;      // -1.0 (left) to +1.0 (right)
+		CSynthBase* pEngine;
+		// Written on Core 0 (Set*), read on Core 2 (Render).
+		// Access via __atomic_load_n/__atomic_store_n with RELAXED ordering;
+		// a slightly stale value is acceptable for audio gain.
+		float fVolume;   // 0.0 – 1.0
+		float fPan;      // -1.0 (left) to +1.0 (right)
 	};
 
 	int FindEngine(CSynthBase* pEngine) const;
 
 	static float Clamp(float val, float lo, float hi);
 
-	TEngineSlot        m_Engines[MaxEngines];
-	unsigned           m_nEngineCount;
-	volatile float     m_fMasterVolume;
-	CSynthBase* volatile m_pSoloEngine;
+	TEngineSlot  m_Engines[MaxEngines];
+	unsigned     m_nEngineCount;
+	// Cross-core fields: Core 0 writes, Core 2 reads. Use __atomic_* builtins everywhere.
+	float        m_fMasterVolume;
+	CSynthBase*  m_pSoloEngine;
+
+	// Pre-allocated temp buffer used during multi-engine mix (avoids VLA on
+	// the baremetal audio-task stack).  alignas(16) keeps NEON loads aligned.
+	alignas(16) float m_TempBuf[MaxFrames * NumChannels];
 };
 
 #endif

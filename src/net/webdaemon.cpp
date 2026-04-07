@@ -1197,7 +1197,7 @@ THTTPStatus CWebDaemon::HandleAPIRequest(const char* pPath,
 				else if (p[1] == 0x43)
 					pDecoded = "Yamaha XG";
 				else if (p[1] == 0x7D)
-					pDecoded = "mt32-pi";
+					pDecoded = MT32_PI_NAME;
 			}
 
 			// Hex preview (first 8 bytes)
@@ -2733,7 +2733,7 @@ THTTPStatus CWebDaemon::BuildSequencerPage(u8* pBuffer, unsigned* pLength, const
 {
 		HtmlWriter html(pBuffer, *pLength);
 		html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>");
-		html.Append("<title>mt32-pi sequencer</title><link rel='stylesheet' href='/app.css'>");
+		html.Append("<title>" MT32_PI_NAME " sequencer</title><link rel='stylesheet' href='/app.css'>");
 		html.Append("<style>");
 		// Player card
 		html.Append("#sq-card{background:#111827;border:1px solid #1e293b;border-radius:16px;padding:0;margin-bottom:14px;overflow:hidden;}");
@@ -3024,7 +3024,7 @@ THTTPStatus CWebDaemon::BuildMixerPage(u8* pBuffer, unsigned* pLength, const cha
 {
 		HtmlWriter html(pBuffer, *pLength);
 		html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>");
-		html.Append("<title>mt32-pi mixer</title><link rel='stylesheet' href='/app.css'></head><body><main>");
+		html.Append("<title>" MT32_PI_NAME " mixer</title><link rel='stylesheet' href='/app.css'></head><body><main>");
 		html.Append("<script src='/app.js'></script>");
 		html.Append("<h1>MIDI Mixer / Router</h1>");
 		html.Append("<p>Route MIDI channels to engines and remap channel numbers.</p>");
@@ -3236,7 +3236,7 @@ THTTPStatus CWebDaemon::BuildMonitorPage(u8* pBuffer, unsigned* pLength, const c
 {
 		HtmlWriter html(pBuffer, *pLength);
 		html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>");
-		html.Append("<title>mt32-pi monitor</title><link rel='stylesheet' href='/app.css'></head><body><main>");
+		html.Append("<title>" MT32_PI_NAME " monitor</title><link rel='stylesheet' href='/app.css'></head><body><main>");
 		html.Append("<script src='/app.js'></script>");
 		html.Append("<h1>MIDI Monitor</h1>");
 		html.Append("<p>Live log of incoming MIDI events. Shows the last 64 messages received by the active synth.</p>");
@@ -3346,7 +3346,7 @@ THTTPStatus CWebDaemon::BuildSoundPage(u8* pBuffer, unsigned* pLength, const cha
 {
 		HtmlWriter html(pBuffer, *pLength);
 		html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>");
-		html.Append("<title>mt32-pi sound</title><link rel='stylesheet' href='/app.css'></head><body><main>");
+		html.Append("<title>" MT32_PI_NAME " sound</title><link rel='stylesheet' href='/app.css'></head><body><main>");
 		html.Append("<script src='/app.js'></script>");
 
 		const bool bMT32Active = std::strcmp(m_pMT32Pi->GetActiveSynthName(), "MT-32") == 0;
@@ -3649,9 +3649,9 @@ THTTPStatus CWebDaemon::BuildConfigPage(u8* pBuffer, unsigned* pLength, const ch
 
 		HtmlWriter html(pBuffer, *pLength);
 		html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>");
-		html.Append("<title>mt32-pi config</title><link rel='stylesheet' href='/app.css'></head><body><main>");
+		html.Append("<title>" MT32_PI_NAME " config</title><link rel='stylesheet' href='/app.css'></head><body><main>");
 		html.Append("<script src='/app.js'></script>");
-		html.Append("<h1>Configure mt32-pi</h1><p>Saves changes to <code>mt32-pi.cfg</code> and creates a backup <code>mt32-pi.cfg.bak</code>.</p>");
+		html.Append("<h1>Configure " MT32_PI_NAME "</h1><p>Saves changes to <code>mt32-pi.cfg</code> and creates a backup <code>mt32-pi.cfg.bak</code>.</p>");
 		html.Append("<nav><a href='/'>Status</a><a href='/sound'>Sound</a><a href='/config'>Config</a><a href='/sequencer'>Sequencer</a><a href='/mixer'>Mixer</a><a href='/monitor'>Monitor</a></nav>");
 		html.Append("<form id='cfgForm'>");
 
@@ -3841,7 +3841,7 @@ THTTPStatus CWebDaemon::BuildConfigPage(u8* pBuffer, unsigned* pLength, const ch
 		html.Append("</form>");
 		html.Append("<script>const f=document.getElementById('cfgForm');const s=document.getElementById('status');const rb=document.getElementById('rebootBtn');");
 		html.Append("f.addEventListener('submit',async(e)=>{e.preventDefault();s.textContent='Saving...';const body=new URLSearchParams(new FormData(f));try{const r=await fetch('/api/config/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()});const j=await r.json();s.textContent=j.message||'OK';}catch(err){s.textContent='Error saving config';}});");
-		html.Append("rb.addEventListener('click',async()=>{if(!confirm('Restart mt32-pi now?'))return;s.textContent='Restarting\u2026';rb.disabled=true;try{await fetch('/api/system/reboot',{method:'POST'});}catch(e){}s.textContent='Restarting\u2026 reconnect in ~20s';});");
+		html.Append("rb.addEventListener('click',async()=>{if(!confirm('Restart " MT32_PI_NAME " now?'))return;s.textContent='Restarting\u2026';rb.disabled=true;try{await fetch('/api/system/reboot',{method:'POST'});}catch(e){}s.textContent='Restarting\u2026 reconnect in ~20s';});");
 		html.Append("const mEl=document.querySelector('select[name=\"network_mode\"]');const wSec=document.getElementById('wifi-section');");
 		html.Append("function _chkWifi(){if(wSec)wSec.classList.toggle('section-hidden',!mEl||mEl.value!=='wifi');}");
 		html.Append("if(mEl)mEl.addEventListener('change',_chkWifi);_chkWifi();");
@@ -3875,9 +3875,9 @@ THTTPStatus CWebDaemon::BuildStatusPage(u8* pBuffer, unsigned* pLength, const ch
 	SoundFontIndex.Format("%u / %u", static_cast<unsigned>(m_pMT32Pi->GetCurrentSoundFontIndex()), static_cast<unsigned>(m_pMT32Pi->GetSoundFontCount()));
 
 	HtmlWriter html(pBuffer, *pLength);
-	html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>mt32-pi status</title><link rel='stylesheet' href='/app.css'></head><body><main>");
+	html.Append("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>" MT32_PI_NAME " status</title><link rel='stylesheet' href='/app.css'></head><body><main>");
 	html.Append("<script src='/app.js'></script>");
-	html.Append("<h1>mt32-pi</h1><p>Live status of system, network and synthesizers.</p>");
+	html.Append("<h1>" MT32_PI_NAME "</h1><p>Live status of system, network and synthesizers.</p>");
 	html.Append("<nav><a href='/'>Status</a><a href='/sound'>Sound</a><a href='/config'>Config</a><a href='/sequencer'>Sequencer</a><a href='/mixer'>Mixer</a><a href='/monitor'>Monitor</a></nav>");
 	html.Append("<div class='hero'>");
 	html.Append("<div class='pill'>IP: ");

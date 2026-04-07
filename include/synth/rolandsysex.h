@@ -23,6 +23,8 @@
 #ifndef _rolandsysex_h
 #define _rolandsysex_h
 
+#include <cstddef>
+
 #include "synth/sysex.h"
 
 enum TRolandModelID : u8
@@ -61,5 +63,25 @@ struct TRolandSysExHeader
 	TRolandCommandID CommandID;
 	u8 Address[3];
 };
+
+// Result returned by ParseRolandSysEx; display pointers refer into the original
+// SysEx buffer (valid only during HandleMIDISysExMessage).
+struct TRolandSysExResult
+{
+	bool       bValid       = false;  // message was recognized and checksum OK
+	bool       bConsume     = false;  // do not forward to FluidSynth
+	bool       bReset       = false;  // GS Reset or SystemModeSet
+	bool       bPercChange  = false;  // percussion channel mode change
+	u8         nPercChannel = 0;
+	u8         nPercMode    = 0;
+	bool       bDisplayText = false;
+	bool       bDisplayDots = false;
+	const u8*  pDisplayData = nullptr;
+	size_t     nDisplaySize = 0;
+	u8         nAddressLo   = 0;
+};
+
+// Parse a SysEx message and return a result struct; no side effects.
+TRolandSysExResult ParseRolandSysEx(const u8* pData, size_t nSize);
 
 #endif

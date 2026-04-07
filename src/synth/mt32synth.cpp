@@ -98,14 +98,7 @@ bool CMT32Synth::Initialize()
 	if (!m_pSynth->open(*m_pControlROMImage, *m_pPCMROMImage, m_nPartialCount, m_AnalogOutputMode))
 		return false;
 
-	m_pSynth->setOutputGain(m_nGain);
-	m_pSynth->setReverbOutputGain(m_nReverbGain);
-	m_pSynth->setReverbEnabled(m_bReverbEnabled);
-	m_pSynth->setNiceAmpRampEnabled(m_bNiceAmpRamp);
-	m_pSynth->setNicePanningEnabled(m_bNicePanning);
-	m_pSynth->setNicePartialMixingEnabled(m_bNicePartialMixing);
-	m_pSynth->setDACInputMode(m_DACInputMode);
-	m_pSynth->setMIDIDelayMode(m_MIDIDelayMode);
+	ApplySynthSettings();
 
 	if (m_ResamplerQuality != TResamplerQuality::None)
 	{
@@ -340,14 +333,7 @@ bool CMT32Synth::SwitchROMSet(TMT32ROMSet ROMSet)
 	m_pSynth->close();
 	m_pSynth->selectRendererType(m_RendererType);
 	assert(m_pSynth->open(*pControlROMImage, *pPCMROMImage, m_nPartialCount, m_AnalogOutputMode));
-	m_pSynth->setOutputGain(m_nGain);
-	m_pSynth->setReverbOutputGain(m_nReverbGain);
-	m_pSynth->setReverbEnabled(m_bReverbEnabled);
-	m_pSynth->setNiceAmpRampEnabled(m_bNiceAmpRamp);
-	m_pSynth->setNicePanningEnabled(m_bNicePanning);
-	m_pSynth->setNicePartialMixingEnabled(m_bNicePartialMixing);
-	m_pSynth->setDACInputMode(m_DACInputMode);
-	m_pSynth->setMIDIDelayMode(m_MIDIDelayMode);
+	ApplySynthSettings();
 	m_Lock.Release();
 
 	m_pControlROMImage = pControlROMImage;
@@ -366,16 +352,7 @@ bool CMT32Synth::ReopenCurrentROMSet()
 	m_pSynth->selectRendererType(m_RendererType);
 	const bool bOpened = m_pSynth->open(*m_pControlROMImage, *m_pPCMROMImage, m_nPartialCount, m_AnalogOutputMode);
 	if (bOpened)
-	{
-		m_pSynth->setOutputGain(m_nGain);
-		m_pSynth->setReverbOutputGain(m_nReverbGain);
-		m_pSynth->setReverbEnabled(m_bReverbEnabled);
-		m_pSynth->setNiceAmpRampEnabled(m_bNiceAmpRamp);
-		m_pSynth->setNicePanningEnabled(m_bNicePanning);
-		m_pSynth->setNicePartialMixingEnabled(m_bNicePartialMixing);
-		m_pSynth->setDACInputMode(m_DACInputMode);
-		m_pSynth->setMIDIDelayMode(m_MIDIDelayMode);
-	}
+		ApplySynthSettings();
 	m_Lock.Release();
 
 	if (!bOpened)
@@ -574,4 +551,15 @@ const char* CMT32Synth::GetChannelInstrumentName(u8 nChannel)
 	}
 
 	return nullptr;
+}
+void CMT32Synth::ApplySynthSettings()
+{
+	m_pSynth->setOutputGain(m_nGain);
+	m_pSynth->setReverbOutputGain(m_nReverbGain);
+	m_pSynth->setReverbEnabled(m_bReverbEnabled);
+	m_pSynth->setNiceAmpRampEnabled(m_bNiceAmpRamp);
+	m_pSynth->setNicePanningEnabled(m_bNicePanning);
+	m_pSynth->setNicePartialMixingEnabled(m_bNicePartialMixing);
+	m_pSynth->setDACInputMode(m_DACInputMode);
+	m_pSynth->setMIDIDelayMode(m_MIDIDelayMode);
 }

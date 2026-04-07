@@ -9,4 +9,8 @@
 
 #define IPPROTO_UDP 17
 
+#ifndef MSG_DONTWAIT
+#define MSG_DONTWAIT 0x40
+#endif
+
 #endif

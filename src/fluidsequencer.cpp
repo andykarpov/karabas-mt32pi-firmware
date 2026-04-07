@@ -33,14 +33,26 @@ extern "C" void fluid_player_remove_timer(fluid_player_t *player, fluid_synth_t 
 
 LOGMODULE("fluidseq");
 
+static const char* const s_StateMessages[] =
+{
+	"Idle",
+	"Creating player",
+	"Opening file",
+	"Reading file",
+	"Loading data",
+	"Playing",
+	"Failed",
+};
+
 CFluidSequencer::CFluidSequencer()
 :	m_pSynth(nullptr),
 	m_pPlayer(nullptr),
 	m_bFinished(false),
 	m_nLoopCount(1),
-	m_nStartTicks(0)
+	m_nStartTicks(0),
+	m_eState(ESeqState::Idle),
+	m_nLastError(0)
 {
-	m_szDiag[0] = '\0';
 }
 
 CFluidSequencer::~CFluidSequencer()
@@ -61,6 +73,11 @@ bool CFluidSequencer::Initialize(fluid_synth_t* pSynth)
 	return true;
 }
 
+const char* CFluidSequencer::GetDiag() const
+{
+	return s_StateMessages[static_cast<int>(m_eState)];
+}
+
 bool CFluidSequencer::Play(const char* pPath)
 {
 	if (!m_pSynth || !pPath || !*pPath)
@@ -75,11 +92,12 @@ bool CFluidSequencer::Play(const char* pPath)
 	}
 
 	// Create a fresh player for each file
-	snprintf(m_szDiag, sizeof(m_szDiag), "Step1: creating player for %s", pPath);
+	m_eState = ESeqState::CreatingPlayer;
 	m_pPlayer = new_fluid_player(m_pSynth);
 	if (!m_pPlayer)
 	{
-		snprintf(m_szDiag, sizeof(m_szDiag), "FAIL: new_fluid_player returned NULL");
+		m_eState = ESeqState::Failed;
+		m_nLastError = 0;
 		LOGERR("Failed to create fluid_player");
 		return false;
 	}
@@ -90,12 +108,13 @@ bool CFluidSequencer::Play(const char* pPath)
 
 	// Load the MIDI file into memory on Core 0 (FatFS/EMMC is only safe here),
 	// then pass the buffer to fluid_player_add_mem().
-	snprintf(m_szDiag, sizeof(m_szDiag), "Step2: f_open(%s)", pPath);
+	m_eState = ESeqState::OpeningFile;
 	FIL File;
 	FRESULT fr = f_open(&File, pPath, FA_READ);
 	if (fr != FR_OK)
 	{
-		snprintf(m_szDiag, sizeof(m_szDiag), "FAIL: f_open(%s) err=%d", pPath, fr);
+		m_eState = ESeqState::Failed;
+		m_nLastError = static_cast<int>(fr);
 		LOGWARN("Failed to open MIDI file: %s (FatFS error %d)", pPath, fr);
 		delete_fluid_player(m_pPlayer);
 		m_pPlayer = nullptr;
@@ -103,10 +122,11 @@ bool CFluidSequencer::Play(const char* pPath)
 	}
 
 	const FSIZE_t nFileSize = f_size(&File);
-	snprintf(m_szDiag, sizeof(m_szDiag), "Step3: filesize=%lu", static_cast<unsigned long>(nFileSize));
+	m_eState = ESeqState::ReadingFile;
 	if (nFileSize == 0 || nFileSize > 4 * 1024 * 1024) // sanity limit 4 MB
 	{
-		snprintf(m_szDiag, sizeof(m_szDiag), "FAIL: bad size %lu", static_cast<unsigned long>(nFileSize));
+		m_eState = ESeqState::Failed;
+		m_nLastError = static_cast<int>(nFileSize);
 		LOGWARN("MIDI file invalid size: %lu bytes", static_cast<unsigned long>(nFileSize));
 		f_close(&File);
 		delete_fluid_player(m_pPlayer);
@@ -129,7 +149,8 @@ bool CFluidSequencer::Play(const char* pPath)
 
 	if (fr != FR_OK || nBytesRead != nFileSize)
 	{
-		snprintf(m_szDiag, sizeof(m_szDiag), "FAIL: f_read err=%d read=%u expected=%lu", fr, nBytesRead, static_cast<unsigned long>(nFileSize));
+		m_eState = ESeqState::Failed;
+		m_nLastError = static_cast<int>(fr);
 		LOGWARN("Failed to read MIDI file: %s", pPath);
 		delete[] pFileData;
 		delete_fluid_player(m_pPlayer);
@@ -138,14 +159,14 @@ bool CFluidSequencer::Play(const char* pPath)
 	}
 
 	// Verify MIDI header
-	snprintf(m_szDiag, sizeof(m_szDiag), "Step4: hdr=%02X%02X%02X%02X sz=%u",
-		pFileData[0], pFileData[1], pFileData[2], pFileData[3], nBytesRead);
+	m_eState = ESeqState::LoadingData;
 	LOGNOTE("FluidSeq: file %s, size=%u, hdr=%c%c%c%c",
 		pPath, nBytesRead, pFileData[0], pFileData[1], pFileData[2], pFileData[3]);
 
 	if (fluid_player_add_mem(m_pPlayer, pFileData, nBytesRead) != FLUID_OK)
 	{
-		snprintf(m_szDiag, sizeof(m_szDiag), "FAIL: fluid_player_add_mem");
+		m_eState = ESeqState::Failed;
+		m_nLastError = FLUID_FAILED;
 		LOGWARN("Failed to load MIDI data: %s", pPath);
 		delete[] pFileData;
 		delete_fluid_player(m_pPlayer);
@@ -161,8 +182,6 @@ bool CFluidSequencer::Play(const char* pPath)
 	// FluidSynth API: -1 = infinite, 1 = play once, 0 = stop immediately
 	fluid_player_set_loop(m_pPlayer, m_nLoopCount);
 
-	snprintf(m_szDiag, sizeof(m_szDiag), "Step5: add_mem OK, calling play()");
-
 	// Remove the sample timer that new_fluid_player() registered on the synth.
 	// The sample timer runs inside fluid_synth_write_float() on Core 2, but the
 	// player was created on Core 0. The linked list insertion is not thread-safe
@@ -173,7 +192,8 @@ bool CFluidSequencer::Play(const char* pPath)
 	// Start playback — we will drive the player callback manually from Tick()
 	if (fluid_player_play(m_pPlayer) != FLUID_OK)
 	{
-		snprintf(m_szDiag, sizeof(m_szDiag), "FAIL: fluid_player_play");
+		m_eState = ESeqState::Failed;
+		m_nLastError = FLUID_FAILED;
 		LOGERR("Failed to start fluid_player");
 		delete_fluid_player(m_pPlayer);
 		m_pPlayer = nullptr;
@@ -183,10 +203,9 @@ bool CFluidSequencer::Play(const char* pPath)
 	// Record start time for Tick() millisecond computation
 	m_nStartTicks = CTimer::GetClockTicks();
 
-	int status = fluid_player_get_status(m_pPlayer);
-	snprintf(m_szDiag, sizeof(m_szDiag), "OK: play() status=%d loop=%d sz=%u timer=manual",
-		status, m_nLoopCount, nBytesRead);
-	LOGNOTE("FluidSequencer: playing %s (status=%d, manual tick)", pPath, status);
+	m_eState = ESeqState::Playing;
+	m_nLastError = 0;
+	LOGNOTE("FluidSequencer: playing %s (status=%d, manual tick)", pPath, fluid_player_get_status(m_pPlayer));
 	return true;
 }
 

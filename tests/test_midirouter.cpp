@@ -704,3 +704,172 @@ TEST_CASE("Router: non-note messages on layered channel go only to primary (exce
 	CHECK(mt32.m_nShortMessageCount == 1);
 	CHECK(fluid.m_nShortMessageCount == 0);
 }
+
+// ---------------------------------------------------------------
+// Per-channel volume (CC7 scaling)
+// ---------------------------------------------------------------
+
+TEST_CASE("Router: default channel volume is 1.0")
+{
+	CMIDIRouter router;
+	for (u8 ch = 0; ch < 16; ++ch)
+		CHECK(router.GetChannelVolume(ch) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("Router: set/get/reset channel volume")
+{
+	CMIDIRouter router;
+	router.SetChannelVolume(5, 0.75f);
+	CHECK(router.GetChannelVolume(5) == doctest::Approx(0.75f));
+
+	router.ResetChannelVolumes();
+	CHECK(router.GetChannelVolume(5) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("Router: channel volume is clamped to [0, 1]")
+{
+	CMIDIRouter router;
+	router.SetChannelVolume(0, 1.5f);
+	CHECK(router.GetChannelVolume(0) == doctest::Approx(1.0f));
+
+	router.SetChannelVolume(0, -0.5f);
+	CHECK(router.GetChannelVolume(0) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("Router: CC7 is scaled by channel volume")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	router.ApplyPreset(TRouterPreset::SingleMT32);
+
+	router.SetChannelVolume(0, 0.5f);
+
+	// CC7 value 100 scaled by 0.5 → 100 * 0.5 + 0.5 rounded = 50
+	router.RouteShortMessage(CC(0, 7, 100));
+	REQUIRE(mt32.m_nShortMessageCount == 1);
+	const u8 receivedVal = static_cast<u8>((mt32.m_nLastShortMessage >> 16) & 0x7F);
+	CHECK(receivedVal == 50u);
+}
+
+TEST_CASE("Router: CC7 value 0 stays 0 after channel volume scaling")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	router.ApplyPreset(TRouterPreset::SingleMT32);
+
+	router.SetChannelVolume(0, 0.5f);
+
+	router.RouteShortMessage(CC(0, 7, 0));
+	REQUIRE(mt32.m_nShortMessageCount == 1);
+	const u8 receivedVal = static_cast<u8>((mt32.m_nLastShortMessage >> 16) & 0x7F);
+	CHECK(receivedVal == 0u);
+}
+
+TEST_CASE("Router: CC7 value 127 with channel volume 1.0 passes unchanged")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	router.ApplyPreset(TRouterPreset::SingleMT32);
+	// Default volume is 1.0 → no scaling applied
+
+	router.RouteShortMessage(CC(0, 7, 127));
+	REQUIRE(mt32.m_nShortMessageCount == 1);
+	const u8 receivedVal = static_cast<u8>((mt32.m_nLastShortMessage >> 16) & 0x7F);
+	CHECK(receivedVal == 127u);
+}
+
+TEST_CASE("Router: non-CC7 controllers are not scaled")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	router.ApplyPreset(TRouterPreset::SingleMT32);
+	router.SetChannelVolume(0, 0.5f);
+
+	// CC1 (mod wheel) should not be scaled even with channel volume set
+	u32 cc1 = CC(0, 1, 100);
+	router.RouteShortMessage(cc1);
+	REQUIRE(mt32.m_nShortMessageCount == 1);
+	CHECK(mt32.m_nLastShortMessage == cc1);
+}
+
+// ---------------------------------------------------------------
+// CC filter boundary values
+// ---------------------------------------------------------------
+
+TEST_CASE("Router: CC filter boundary — block CC0 and CC127")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	router.ApplyPreset(TRouterPreset::SingleMT32);
+
+	router.SetCCFilter(CMIDIRouter::EngMT32, 0, false);
+	router.SetCCFilter(CMIDIRouter::EngMT32, 127, false);
+
+	router.RouteShortMessage(CC(0, 0, 64));    // CC0 blocked
+	CHECK(mt32.m_nShortMessageCount == 0);
+
+	router.RouteShortMessage(CC(0, 127, 64));  // CC127 blocked
+	CHECK(mt32.m_nShortMessageCount == 0);
+
+	router.RouteShortMessage(CC(0, 1, 64));    // CC1 allowed
+	CHECK(mt32.m_nShortMessageCount == 1);
+}
+
+// ---------------------------------------------------------------
+// SysEx with all three engines
+// ---------------------------------------------------------------
+
+TEST_CASE("Router: SysEx with 3 engines — YMFM gets no SysEx")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CSynthBaseStub fluid("FluidSynth", TSynth::SoundFont);
+	CSynthBaseStub ymfm("YMFM", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	router.SetFluidSynthEngine(&fluid);
+	router.SetYmfmEngine(&ymfm);
+
+	// Roland SysEx → MT-32 only
+	const u8 roland[] = { 0xF0, 0x41, 0x10, 0x16, 0x12, 0xF7 };
+	router.RouteSysEx(roland, sizeof(roland));
+	CHECK(mt32.m_nSysExCount == 1);
+	CHECK(fluid.m_nSysExCount == 0);
+	CHECK(ymfm.m_nSysExCount == 0);
+
+	// Universal SysEx → MT-32 + FluidSynth, not YMFM
+	const u8 universal[] = { 0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7 };
+	router.RouteSysEx(universal, sizeof(universal));
+	CHECK(mt32.m_nSysExCount == 2);
+	CHECK(fluid.m_nSysExCount == 1);
+	CHECK(ymfm.m_nSysExCount == 0);
+
+	// Non-Roland SysEx → FluidSynth only
+	const u8 yamaha[] = { 0xF0, 0x43, 0x10, 0x4C, 0xF7 };
+	router.RouteSysEx(yamaha, sizeof(yamaha));
+	CHECK(mt32.m_nSysExCount == 2);
+	CHECK(fluid.m_nSysExCount == 2);
+	CHECK(ymfm.m_nSysExCount == 0);
+}
+
+// ---------------------------------------------------------------
+// Layering with null engine
+// ---------------------------------------------------------------
+
+TEST_CASE("Router: layering with null FluidSynth does not crash")
+{
+	CSynthBaseStub mt32("MT-32", TSynth::MT32);
+	CMIDIRouter router;
+	router.SetMT32Engine(&mt32);
+	// FluidSynth intentionally not registered (nullptr)
+	router.ApplyPreset(TRouterPreset::SingleMT32);
+	router.SetLayering(0, true);
+
+	// BroadcastToEngines checks m_pFluidSynth != nullptr before dereferencing
+	router.RouteShortMessage(NoteOn(0, 60, 100));
+	CHECK(mt32.m_nShortMessageCount == 1);
+}

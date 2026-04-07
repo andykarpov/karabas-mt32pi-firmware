@@ -23,6 +23,8 @@
 #ifndef _mt32pi_h
 #define _mt32pi_h
 
+#include "version.h"
+
 #include <circle/actled.h>
 #include <circle/bcm54213.h>
 #include <circle/bcmrandom.h>
@@ -555,7 +557,7 @@ private:
 	CFluidSequencer* m_pFluidSequencer;  // heap, allocated on first play
 	double           m_nTempoMultiplier; // current tempo multiplier (for status reporting)
 	bool    m_bSeqLoopEnabled;           // repeat when song finishes
-	volatile bool m_bSeqLoading;         // true while SequencerPlayFile is reading the file from SD
+	bool    m_bSeqLoading;             // true while SequencerPlayFile is reading the file from SD
 	bool    m_bSeqIsPlaying;             // playback active
 	bool    m_bSeqFinished;              // song ended naturally (loop=off)
 	u32     m_nSeqElapsedUs;             // elapsed µs (updated each Tick)
@@ -577,7 +579,8 @@ private:
 	static constexpr size_t SeekHistoryMax = 32;
 	struct TSeekEntry { char szPath[SeqPathMax]; int nTick; };
 	TSeekEntry       m_SeekHistory[SeekHistoryMax];
-	size_t           m_nSeekHistoryCount;
+	size_t           m_nSeekHistoryCount; // number of valid entries (0..SeekHistoryMax)
+	size_t           m_nSeekHistoryHead;  // index of the next write slot (ring buffer)
 
 	int  SeekHistoryGet(const char* pPath) const;   // -1 if not found
 	void SeekHistorySet(const char* pPath, int nTick);

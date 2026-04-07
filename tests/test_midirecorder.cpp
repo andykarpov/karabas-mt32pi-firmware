@@ -11,6 +11,7 @@
 #include "midirecorder.h"
 
 #include <cstring>
+#include <vector>
 
 static void ResetFatFSStub()
 {
@@ -130,4 +131,59 @@ TEST_CASE("MidiRecorder: Start succeeds before the output file is opened")
 	g_fatfs_open_fail = true;
 	CHECK(recorder.Start());
 	recorder.Stop();
+}
+
+TEST_CASE("MidiRecorder: multiple consecutive Start/Stop cycles succeed")
+{
+	ResetFatFSStub();
+	CMidiRecorder recorder;
+
+	// First cycle
+	REQUIRE(recorder.Start());
+	CHECK(recorder.IsRecording());
+	recorder.Stop();
+	CHECK_FALSE(recorder.IsRecording());
+
+	const size_t firstWriteSize = g_fatfs_written_size;
+
+	// Second cycle — should work identically
+	g_fatfs_written_size = 0;
+	g_fatfs_seek_pos     = 0;
+	std::memset(g_fatfs_written_buf, 0, firstWriteSize);
+
+	REQUIRE(recorder.Start());
+	CHECK(recorder.IsRecording());
+	recorder.Stop();
+	CHECK_FALSE(recorder.IsRecording());
+
+	// Both empty SMFs must have the same size
+	CHECK(g_fatfs_written_size == firstWriteSize);
+
+	// Third cycle — also OK
+	REQUIRE(recorder.Start());
+	recorder.Stop();
+	CHECK_FALSE(recorder.IsRecording());
+}
+
+TEST_CASE("MidiRecorder: buffer overflow stops recording gracefully")
+{
+	ResetFatFSStub();
+	CMidiRecorder recorder;
+
+	REQUIRE(recorder.Start());
+	CHECK(recorder.IsRecording());
+
+	// Build a SysEx large enough to trigger the overflow guard:
+	// After Start(), m_nBufPos == kTrackDataStart + 7 (= 29 bytes).
+	// RecordSysEx guard: m_nBufPos + 10 + nSize > MaxBufSize
+	// → nSize > MaxBufSize - 39.  Use MaxBufSize to be clearly over threshold.
+	const size_t kOverflowSize = CMidiRecorder::MaxBufSize;
+	std::vector<u8> bigSysEx(kOverflowSize, 0x10);
+	bigSysEx.front() = 0xF0;
+	bigSysEx.back()  = 0xF7;
+
+	// RecordSysEx internally calls Stop() when the buffer would overflow
+	recorder.RecordSysEx(bigSysEx.data(), bigSysEx.size(), 1000);
+
+	CHECK_FALSE(recorder.IsRecording());
 }

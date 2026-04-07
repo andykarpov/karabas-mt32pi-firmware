@@ -306,9 +306,45 @@ void CSoundFontSynth::HandleMIDIShortMessage(u32 nMessage)
 
 void CSoundFontSynth::HandleMIDISysExMessage(const u8* pData, size_t nSize)
 {
-	// Return early if it wasn't a GM Mode On/Off message and was consumed as a text/display dots message
-	if (!ParseGMSysEx(pData, nSize) && (ParseRolandSysEx(pData, nSize) || ParseYamahaSysEx(pData, nSize)))
-		return;
+	// GM Mode On/Off: reset monitor but still forward to FluidSynth.
+	const TGMSysExResult gm = ParseGMSysEx(pData, nSize);
+	if (gm.bReset)
+	{
+		ResetMIDIMonitor();
+		// Fall through to FluidSynth forwarding.
+	}
+	else
+	{
+		// Roland: display or control messages — apply side effects, then decide.
+		bool bConsumed = false;
+
+		const TRolandSysExResult roland = ParseRolandSysEx(pData, nSize);
+		if (roland.bReset)
+			ResetMIDIMonitor();
+		if (roland.bPercChange)
+			m_nPercussionMask ^= (-static_cast<int>(roland.nPercMode) ^ m_nPercussionMask) & (1 << roland.nPercChannel);
+		if (roland.bDisplayText && m_pUI)
+			m_pUI->ShowSysExText(CUserInterface::TSysExDisplayMessage::Roland, roland.pDisplayData, roland.nDisplaySize, roland.nAddressLo);
+		if (roland.bDisplayDots && m_pUI)
+			m_pUI->ShowSysExBitmap(CUserInterface::TSysExDisplayMessage::Roland, roland.pDisplayData, roland.nDisplaySize);
+		bConsumed = roland.bConsume;
+
+		if (!bConsumed)
+		{
+			// Yamaha: display or control messages.
+			const TYamahaSysExResult yamaha = ParseYamahaSysEx(pData, nSize);
+			if (yamaha.bReset)
+				ResetMIDIMonitor();
+			if (yamaha.bDisplayText && m_pUI)
+				m_pUI->ShowSysExText(CUserInterface::TSysExDisplayMessage::Yamaha, yamaha.pDisplayData, yamaha.nDisplaySize, yamaha.nAddressLo);
+			if (yamaha.bDisplayDots && m_pUI)
+				m_pUI->ShowSysExBitmap(CUserInterface::TSysExDisplayMessage::Yamaha, yamaha.pDisplayData, yamaha.nDisplaySize);
+			bConsumed = yamaha.bConsume;
+		}
+
+		if (bConsumed)
+			return;
+	}
 
 	// No special handling; forward to FluidSynth SysEx parser, excluding leading 0xF0 and trailing 0xF7
 	m_Lock.Acquire();
@@ -537,11 +573,17 @@ void CSoundFontSynth::DumpFXSettings() const
 }
 #endif
 
-bool CSoundFontSynth::ParseGMSysEx(const u8* pData, size_t nSize)
+// ---------------------------------------------------------------------------
+// SysEx parsers — free functions; no side effects, no class state.
+// ---------------------------------------------------------------------------
+
+TGMSysExResult ParseGMSysEx(const u8* pData, size_t nSize)
 {
+	TGMSysExResult result;
+
 	// Must be at least size of header plus Start/End of Exclusive bytes
 	if (nSize < sizeof(TGMSysExHeader) + 2)
-		return false;
+		return result;
 
 	const auto& Header = reinterpret_cast<const TGMSysExHeader&>(pData[1]);
 
@@ -549,125 +591,120 @@ bool CSoundFontSynth::ParseGMSysEx(const u8* pData, size_t nSize)
 	    Header.DeviceID == TDeviceID::AllCall &&
 	    Header.SubID1 == TUniversalSubID::GeneralMIDI)
 	{
-		// GM Mode On/Off
 		if (Header.SubID2 == TGMSubID::GeneralMIDIOn || Header.SubID2 == TGMSubID::GeneralMIDIOff)
-		{
-			ResetMIDIMonitor();
-			return true;
-		}
+			result.bReset = true;
 	}
 
-	return false;
+	return result;
 }
 
-bool CSoundFontSynth::ParseRolandSysEx(const u8* pData, size_t nSize)
+TRolandSysExResult ParseRolandSysEx(const u8* pData, size_t nSize)
 {
+	TRolandSysExResult result;
+
 	// Must be at least size of header plus a data byte, a checksum byte, and Start/End of Exclusive bytes
 	if (nSize < sizeof(TRolandSysExHeader) + 4)
-		return false;
+		return result;
 
 	const auto& Header = reinterpret_cast<const TRolandSysExHeader&>(pData[1]);
+
+	if (Header.ManufacturerID != TManufacturerID::Roland)
+		return result;
+
 	const u32 nAddressHiMed = Header.Address[0] << 16 | Header.Address[1] << 8;
 	const u8 nAddressLo = Header.Address[2];
 	const u8* pRolandData = pData + sizeof(TRolandSysExHeader) + 1;
 	const size_t nRolandDataSize = nSize - sizeof(TRolandSysExHeader) - 3;
 	const u8 nChecksum = pData[nSize - 2];
 
-	if (Header.ManufacturerID != TManufacturerID::Roland)
-		return false;
-
 	if (Utility::RolandChecksum(Header.Address, sizeof(Header.Address) + nRolandDataSize) != nChecksum)
-		return false;
+		return result;
+
+	result.bValid = true;
 
 	// Single byte GS messages
 	if (Header.ModelID == TRolandModelID::GS && nRolandDataSize == 1)
 	{
 		if ((nAddressHiMed == TRolandAddress::GSReset || nAddressHiMed == TRolandAddress::SystemModeSet) && *pRolandData == 0)
 		{
-			// Reset MIDI monitor on GS reset
-			ResetMIDIMonitor();
-
+			result.bReset = true;
 			// Don't consume; forward to FluidSynth
-			return false;
 		}
 		else if ((nAddressHiMed & TRolandAddressMask::PatchPart) == TRolandAddress::UseForRhythmPart)
 		{
-			// TODO: If FluidSynth had an API to query the channel mode we wouldn't need to keep track of it
-			const u8 nChannel = Header.Address[1] & 0x0F;
-			const u8 nMode    = *pRolandData ? 1 : 0;
-			m_nPercussionMask ^= (-nMode ^ m_nPercussionMask) & (1 << nChannel);
-
+			result.bPercChange  = true;
+			result.nPercChannel = Header.Address[1] & 0x0F;
+			result.nPercMode    = *pRolandData ? 1 : 0;
 			// Don't consume; forward to FluidSynth
-			return false;
 		}
 	}
 	else if (Header.ModelID == TRolandModelID::SC55)
 	{
 		if (nAddressHiMed == TRolandAddress::SC55DisplayText)
 		{
-			if (m_pUI)
-				m_pUI->ShowSysExText(CUserInterface::TSysExDisplayMessage::Roland, pRolandData, nRolandDataSize, nAddressLo);
-
-			// Consume
-			return true;
+			result.bDisplayText = true;
+			result.pDisplayData = pRolandData;
+			result.nDisplaySize = nRolandDataSize;
+			result.nAddressLo   = nAddressLo;
+			result.bConsume     = true;
 		}
 		else if (nAddressHiMed == TRolandAddress::SC55DisplayDots)
 		{
-			if (m_pUI)
-				m_pUI->ShowSysExBitmap(CUserInterface::TSysExDisplayMessage::Roland, pRolandData, nRolandDataSize);
-
-			// Consume
-			return true;
+			result.bDisplayDots = true;
+			result.pDisplayData = pRolandData;
+			result.nDisplaySize = nRolandDataSize;
+			result.bConsume     = true;
 		}
 	}
 
-	return false;
+	return result;
 }
 
-bool CSoundFontSynth::ParseYamahaSysEx(const u8* pData, size_t nSize)
+TYamahaSysExResult ParseYamahaSysEx(const u8* pData, size_t nSize)
 {
+	TYamahaSysExResult result;
+
 	// Must be at least size of header plus a data byte and Start/End of Exclusive bytes
 	if (nSize < sizeof(TYamahaSysExHeader) + 3)
-		return false;
+		return result;
 
 	const auto& Header = reinterpret_cast<const TYamahaSysExHeader&>(pData[1]);
+
+	if (Header.ManufacturerID != TManufacturerID::Yamaha)
+		return result;
+
 	const u32 nAddressHiMed = Header.Address[0] << 16 | Header.Address[1] << 8;
 	const u8 nAddressLo = Header.Address[2];
 	const u8* pYamahaData = pData + sizeof(TYamahaSysExHeader) + 1;
 	const size_t nYamahaDataSize = nSize - sizeof(TYamahaSysExHeader) - 2;
 
-	if (Header.ManufacturerID != TManufacturerID::Yamaha)
-		return false;
+	if (Header.ModelID != TYamahaModelID::XG)
+		return result;
 
-	if (Header.ModelID == TYamahaModelID::XG)
+	result.bValid = true;
+
+	if (nAddressHiMed == TYamahaAddress::XGSystemOn && *pYamahaData == 0)
 	{
-		if (nAddressHiMed == TYamahaAddress::XGSystemOn && *pYamahaData == 0)
-		{
-			// Reset MIDI monitor on XG reset
-			ResetMIDIMonitor();
-
-			// Don't consume; forward to FluidSynth
-			return false;
-		}
-		else if (nAddressHiMed == TYamahaAddress::DisplayLetter)
-		{
-			if (m_pUI)
-				m_pUI->ShowSysExText(CUserInterface::TSysExDisplayMessage::Yamaha, pYamahaData, nYamahaDataSize, nAddressLo);
-
-			// Consume
-			return true;
-		}
-		else if (nAddressHiMed == TYamahaAddress::DisplayBitmap)
-		{
-			if (m_pUI)
-				m_pUI->ShowSysExBitmap(CUserInterface::TSysExDisplayMessage::Yamaha, pYamahaData, nYamahaDataSize);
-
-			// Consume
-			return true;
-		}
+		result.bReset = true;
+		// Don't consume; forward to FluidSynth
+	}
+	else if (nAddressHiMed == TYamahaAddress::DisplayLetter)
+	{
+		result.bDisplayText = true;
+		result.pDisplayData = pYamahaData;
+		result.nDisplaySize = nYamahaDataSize;
+		result.nAddressLo   = nAddressLo;
+		result.bConsume     = true;
+	}
+	else if (nAddressHiMed == TYamahaAddress::DisplayBitmap)
+	{
+		result.bDisplayDots = true;
+		result.pDisplayData = pYamahaData;
+		result.nDisplaySize = nYamahaDataSize;
+		result.bConsume     = true;
 	}
 
-	return false;
+	return result;
 }
 
 void CSoundFontSynth::SetGain(float nGain)
@@ -681,92 +718,62 @@ void CSoundFontSynth::SetGain(float nGain)
 
 void CSoundFontSynth::SetReverbActive(bool bActive)
 {
-	m_bReverbActive = bActive;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_reverb_on(m_pSynth, -1, bActive);
-	m_Lock.Release();
+	ApplyFluidParam(m_bReverbActive, bActive,
+		[](fluid_synth_t* s, bool v) { fluid_synth_reverb_on(s, -1, v); });
 }
 
 void CSoundFontSynth::SetReverbRoomSize(float nRoomSize)
 {
-	m_nReverbRoomSize = nRoomSize;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_reverb_group_roomsize(m_pSynth, -1, nRoomSize);
-	m_Lock.Release();
+	ApplyFluidParam(m_nReverbRoomSize, nRoomSize,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_reverb_group_roomsize(s, -1, v); });
 }
 
 void CSoundFontSynth::SetReverbLevel(float nLevel)
 {
-	m_nReverbLevel = nLevel;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_reverb_group_level(m_pSynth, -1, nLevel);
-	m_Lock.Release();
+	ApplyFluidParam(m_nReverbLevel, nLevel,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_reverb_group_level(s, -1, v); });
 }
 
 void CSoundFontSynth::SetReverbDamping(float nDamping)
 {
-	m_nReverbDamping = nDamping;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_reverb_group_damp(m_pSynth, -1, nDamping);
-	m_Lock.Release();
+	ApplyFluidParam(m_nReverbDamping, nDamping,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_reverb_group_damp(s, -1, v); });
 }
 
 void CSoundFontSynth::SetReverbWidth(float nWidth)
 {
-	m_nReverbWidth = nWidth;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_reverb_group_width(m_pSynth, -1, nWidth);
-	m_Lock.Release();
+	ApplyFluidParam(m_nReverbWidth, nWidth,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_reverb_group_width(s, -1, v); });
 }
 
 void CSoundFontSynth::SetChorusActive(bool bActive)
 {
-	m_bChorusActive = bActive;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_chorus_on(m_pSynth, -1, bActive);
-	m_Lock.Release();
+	ApplyFluidParam(m_bChorusActive, bActive,
+		[](fluid_synth_t* s, bool v) { fluid_synth_chorus_on(s, -1, v); });
 }
 
 void CSoundFontSynth::SetChorusDepth(float nDepth)
 {
-	m_nChorusDepth = nDepth;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_chorus_group_depth(m_pSynth, -1, nDepth);
-	m_Lock.Release();
+	ApplyFluidParam(m_nChorusDepth, nDepth,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_chorus_group_depth(s, -1, v); });
 }
 
 void CSoundFontSynth::SetChorusLevel(float nLevel)
 {
-	m_nChorusLevel = nLevel;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_chorus_group_level(m_pSynth, -1, nLevel);
-	m_Lock.Release();
+	ApplyFluidParam(m_nChorusLevel, nLevel,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_chorus_group_level(s, -1, v); });
 }
 
 void CSoundFontSynth::SetChorusVoices(int nVoices)
 {
-	m_nChorusVoices = nVoices;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_chorus_group_nr(m_pSynth, -1, nVoices);
-	m_Lock.Release();
+	ApplyFluidParam(m_nChorusVoices, nVoices,
+		[](fluid_synth_t* s, int v) { fluid_synth_set_chorus_group_nr(s, -1, v); });
 }
 
 void CSoundFontSynth::SetChorusSpeed(float nSpeed)
 {
-	m_nChorusSpeed = nSpeed;
-	m_Lock.Acquire();
-	if (m_pSynth)
-		fluid_synth_set_chorus_group_speed(m_pSynth, -1, nSpeed);
-	m_Lock.Release();
+	ApplyFluidParam(m_nChorusSpeed, nSpeed,
+		[](fluid_synth_t* s, float v) { fluid_synth_set_chorus_group_speed(s, -1, v); });
 }
 
 const char* CSoundFontSynth::GetTuningName(int nPreset)

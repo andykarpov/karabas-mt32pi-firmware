@@ -104,77 +104,83 @@ void CMIDIRouter::RouteShortMessage(u32 nMessage)
 {
 	const u8 status = nMessage & 0xFF;
 
-	// System real-time and system common messages (>= 0xF0)
-	// go to all engines that are in the channel map
+	// System real-time and system common (>= 0xF0): broadcast to all registered engines
 	if (status >= 0xF0)
 	{
-		if (m_pMT32)
-			m_pMT32->HandleMIDIShortMessage(nMessage);
-		if (m_pFluidSynth && m_pFluidSynth != m_pMT32)
-			m_pFluidSynth->HandleMIDIShortMessage(nMessage);
+		BroadcastToEngines(nMessage);
 		return;
 	}
 
-	// Channel messages: extract channel, remap, and route
 	const u8 nChannel = status & 0x0F;
 	const u8 nMsgType = status & 0xF0;
 	CSynthBase* pTarget = m_pChannelMap[nChannel];
+	const u32 nRouted  = RemapMessage(nChannel, nMessage);
 
-	// Build the (possibly remapped) message once
-	const u8 nRemapped = m_nChannelRemap[nChannel];
-	const u32 nRouted = (nRemapped != nChannel)
-		? ((nMessage & 0xFFFFFF00u) | ((nMsgType) | nRemapped))
-		: nMessage;
-
-	// CC filtering: check if this CC# is allowed for the target engine
 	if (nMsgType == 0xB0)
 	{
-		const u8 nCC = static_cast<u8>((nMessage >> 8) & 0x7F);
-
-		// Per-channel volume: scale CC7 (volume) by the channel multiplier
-		u32 nMsgToSend = nRouted;
-		if (nCC == 7 && m_fChannelVolume[nChannel] < 1.0f)
-		{
-			const u8 nRawVal = static_cast<u8>((nMessage >> 16) & 0x7F);
-			const u8 nScaled = static_cast<u8>(nRawVal * m_fChannelVolume[nChannel] + 0.5f);
-			nMsgToSend = (nRouted & 0xFF00FFFFu) | (static_cast<u32>(nScaled) << 16);
-		}
-
-		auto SendIfAllowed = [&](CSynthBase* pEng, unsigned nEngIdx, u32 nMsg)
-		{
-			if (pEng && m_bCCFilter[nEngIdx][nCC])
-				pEng->HandleMIDIShortMessage(nMsg);
-		};
-
-		if (pTarget == m_pMT32)
-			SendIfAllowed(m_pMT32, EngMT32, nMsgToSend);
-		else if (pTarget == m_pFluidSynth)
-			SendIfAllowed(m_pFluidSynth, EngFluid, nMsgToSend);
-
-		// Layering: send CC to the other engine too (if allowed)
-		if (m_bLayered[nChannel])
-		{
-			if (pTarget != m_pMT32 && m_pMT32)
-				SendIfAllowed(m_pMT32, EngMT32, nMsgToSend);
-			if (pTarget != m_pFluidSynth && m_pFluidSynth)
-				SendIfAllowed(m_pFluidSynth, EngFluid, nMsgToSend);
-		}
+		DispatchCC(nRouted, nChannel, pTarget);
 		return;
 	}
 
-	// Layering for NoteOn/Off: duplicate to both engines
 	if (m_bLayered[nChannel] && (nMsgType == 0x90 || nMsgType == 0x80))
 	{
-		if (m_pMT32)
-			m_pMT32->HandleMIDIShortMessage(nRouted);
-		if (m_pFluidSynth && m_pFluidSynth != m_pMT32)
-			m_pFluidSynth->HandleMIDIShortMessage(nRouted);
+		BroadcastToEngines(nRouted);
 		return;
 	}
 
-	// Normal routing
 	if (pTarget)
 		pTarget->HandleMIDIShortMessage(nRouted);
+}
+
+u32 CMIDIRouter::RemapMessage(u8 nChannel, u32 nMessage) const
+{
+	const u8 nRemapped = m_nChannelRemap[nChannel];
+	if (nRemapped == nChannel)
+		return nMessage;
+	return (nMessage & 0xFFFFFF00u) | ((nMessage & 0xF0u) | nRemapped);
+}
+
+u32 CMIDIRouter::ScaleCC7(u32 nMessage, u8 nChannel) const
+{
+	const u8 nCC = static_cast<u8>((nMessage >> 8) & 0x7F);
+	if (nCC != 7 || m_fChannelVolume[nChannel] >= 1.0f)
+		return nMessage;
+	const u8 nRaw    = static_cast<u8>((nMessage >> 16) & 0x7F);
+	const u8 nScaled = static_cast<u8>(nRaw * m_fChannelVolume[nChannel] + 0.5f);
+	return (nMessage & 0xFF00FFFFu) | (static_cast<u32>(nScaled) << 16);
+}
+
+void CMIDIRouter::DispatchCC(u32 nMessage, u8 nChannel, CSynthBase* pTarget)
+{
+	const u8  nCC       = static_cast<u8>((nMessage >> 8) & 0x7F);
+	const u32 nToSend   = ScaleCC7(nMessage, nChannel);
+
+	auto SendIfAllowed = [&](CSynthBase* pEng, unsigned nEngIdx)
+	{
+		if (pEng && m_bCCFilter[nEngIdx][nCC])
+			pEng->HandleMIDIShortMessage(nToSend);
+	};
+
+	if (pTarget == m_pMT32)
+		SendIfAllowed(m_pMT32, EngMT32);
+	else if (pTarget == m_pFluidSynth)
+		SendIfAllowed(m_pFluidSynth, EngFluid);
+
+	if (m_bLayered[nChannel])
+	{
+		if (pTarget != m_pMT32 && m_pMT32)
+			SendIfAllowed(m_pMT32, EngMT32);
+		if (pTarget != m_pFluidSynth && m_pFluidSynth)
+			SendIfAllowed(m_pFluidSynth, EngFluid);
+	}
+}
+
+void CMIDIRouter::BroadcastToEngines(u32 nMessage)
+{
+	if (m_pMT32)
+		m_pMT32->HandleMIDIShortMessage(nMessage);
+	if (m_pFluidSynth && m_pFluidSynth != m_pMT32)
+		m_pFluidSynth->HandleMIDIShortMessage(nMessage);
 }
 
 void CMIDIRouter::RouteSysEx(const u8* pData, size_t nSize)
@@ -209,6 +215,20 @@ void CMIDIRouter::RouteSysEx(const u8* pData, size_t nSize)
 		m_pFluidSynth->HandleMIDISysExMessage(pData, nSize);
 }
 
+void CMIDIRouter::CountEngines(unsigned& nMT32, unsigned& nFluid, unsigned& nYmfm) const
+{
+	nMT32 = nFluid = nYmfm = 0;
+	for (unsigned i = 0; i < NumChannels; ++i)
+	{
+		if (m_pChannelMap[i] == m_pMT32)
+			++nMT32;
+		else if (m_pChannelMap[i] == m_pFluidSynth)
+			++nFluid;
+		else if (m_pChannelMap[i] == m_pYmfm)
+			++nYmfm;
+	}
+}
+
 bool CMIDIRouter::IsDualMode() const
 {
 	// A layered channel sends to both engines even if the channel map only
@@ -216,47 +236,20 @@ bool CMIDIRouter::IsDualMode() const
 	if (HasAnyLayering())
 		return true;
 
-	bool bHasMT32 = false;
-	bool bHasFluid = false;
-	bool bHasYmfm = false;
-	for (unsigned i = 0; i < NumChannels; ++i)
-	{
-		if (m_pChannelMap[i] == m_pMT32)
-			bHasMT32 = true;
-		else if (m_pChannelMap[i] == m_pFluidSynth)
-			bHasFluid = true;
-		else if (m_pChannelMap[i] == m_pYmfm)
-			bHasYmfm = true;
-
-		const unsigned nActiveEngines = (bHasMT32 ? 1u : 0u)
-			+ (bHasFluid ? 1u : 0u)
-			+ (bHasYmfm ? 1u : 0u);
-
-		if (nActiveEngines >= 2)
-			return true;
-	}
-	return false;
+	unsigned nMT32, nFluid, nYmfm;
+	CountEngines(nMT32, nFluid, nYmfm);
+	unsigned nActive = (nMT32 > 0 ? 1u : 0u) + (nFluid > 0 ? 1u : 0u) + (nYmfm > 0 ? 1u : 0u);
+	return nActive >= 2;
 }
 
 CSynthBase* CMIDIRouter::GetPrimaryEngine() const
 {
-	unsigned nMT32Count = 0;
-	unsigned nFluidCount = 0;
-	unsigned nYmfmCount = 0;
+	unsigned nMT32, nFluid, nYmfm;
+	CountEngines(nMT32, nFluid, nYmfm);
 
-	for (unsigned i = 0; i < NumChannels; ++i)
-	{
-		if (m_pChannelMap[i] == m_pMT32)
-			++nMT32Count;
-		else if (m_pChannelMap[i] == m_pFluidSynth)
-			++nFluidCount;
-		else if (m_pChannelMap[i] == m_pYmfm)
-			++nYmfmCount;
-	}
-
-	if (nMT32Count >= nFluidCount && nMT32Count >= nYmfmCount)
+	if (nMT32 >= nFluid && nMT32 >= nYmfm)
 		return m_pMT32;
-	if (nFluidCount >= nYmfmCount)
+	if (nFluid >= nYmfm)
 		return m_pFluidSynth;
 	return m_pYmfm;
 }

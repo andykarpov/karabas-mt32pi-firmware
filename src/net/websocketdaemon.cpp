@@ -245,7 +245,7 @@ static void HandleConnection(CSocket* pSock, CMT32Pi* pMT32Pi, unsigned nInterva
 	u8*   txBuf   = new u8[kTxBuf];
 	char* jsonBuf = new char[kJsnBuf]; // heap: keeps these off the tiny task stack
 	char* prevJSON= new char[kJsnBuf];
-	u8*   framePay= new u8[512];
+	u8*   framePay= new u8[512 + 1]; // +1 for null-terminator after ParseClientFrame
 
 	if (!rxBuf || !txBuf || !jsonBuf || !prevJSON || !framePay)
 	{

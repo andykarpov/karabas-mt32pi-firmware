@@ -22,13 +22,14 @@
 
 #include "config.h"
 #include "kernel.h"
+#include "version.h"
 
 #ifndef MT32_PI_VERSION
 #define MT32_PI_VERSION "<unknown>"
 #endif
 
 CKernel::CKernel(void)
-	: CStdlibApp("mt32-pi"),
+	: CStdlibApp(MT32_PI_NAME),
 
 	  m_Serial(&mInterrupt, true),
 #ifdef HDMI_CONSOLE
@@ -116,7 +117,7 @@ bool CKernel::Initialize(void)
 
 CStdlibApp::TShutdownMode CKernel::Run(void)
 {
-	m_Logger.Write(GetKernelName(), LogNotice, "mt32-pi " MT32_PI_VERSION);
+	m_Logger.Write(GetKernelName(), LogNotice, MT32_PI_NAME " " MT32_PI_VERSION);
 	m_Logger.Write(GetKernelName(), LogNotice, "Compile time: " __DATE__ " " __TIME__);
 
 	m_MT32Pi.Run(0);

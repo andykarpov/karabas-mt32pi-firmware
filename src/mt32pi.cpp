@@ -39,9 +39,24 @@
 #include "lcd/ui.h"
 #include "mt32pi.h"
 
-#define MT32_PI_NAME "mt32-pi"
 LOGMODULE(MT32_PI_NAME);
 const char MT32PiFullName[] = MT32_PI_NAME " " MT32_PI_VERSION;
+
+// ---------------------------------------------------------------------------
+// TryAllocSynth<TSynth, TArgs...>
+// Constructs TSynth(args...), calls Initialize(), and returns the pointer.
+// Returns nullptr and deletes the object if Initialize() fails.
+// Caller is responsible for logging the warning and returning false.
+// ---------------------------------------------------------------------------
+namespace {
+template<class TSynth, class... TArgs>
+TSynth* TryAllocSynth(TArgs&&... args)
+{
+	TSynth* p = new TSynth(std::forward<TArgs>(args)...);
+	if (!p->Initialize()) { delete p; return nullptr; }
+	return p;
+}
+} // namespace
 
 const char WLANFirmwarePath[] = "SD:firmware/";
 const char WLANConfigFile[]   = "SD:wpa_supplicant.conf";
@@ -51,7 +66,11 @@ constexpr u32 MisterUpdatePeriodMillis             = 50;
 constexpr u32 LEDTimeoutMillis                     = 50;
 constexpr u32 ActiveSenseTimeoutMillis             = 330;
 
-constexpr float Sample24BitMax = (1 << 24 - 1) - 1;
+// 24-bit signed audio: max positive value = 2^23 - 1 = 8388607.
+// The original expression (1 << 24 - 1) - 1 evaluates as (1 << 23) - 1 due
+// to operator precedence (subtraction before shift), which gives the correct
+// value by coincidence.  Written explicitly for clarity.
+constexpr float Sample24BitMax = static_cast<float>((1 << 23) - 1);
 
 enum class TCustomSysExCommand : u8
 {
@@ -161,6 +180,7 @@ CMT32Pi::CMT32Pi(CI2CMaster* pI2CMaster, CSPIMaster* pSPIMaster, CInterruptSyste
 	m_szSeqCurrentFile[0] = '\0';
 	m_szSeqPausedFile[0]  = '\0';
 	m_nSeekHistoryCount   = 0;
+	m_nSeekHistoryHead    = 0;
 	memset(m_SeekHistory, 0, sizeof(m_SeekHistory));
 	memset(m_activeNotes, 0, sizeof(m_activeNotes));
 	m_eMidiSource = static_cast<u8>(EMidiSource::Physical);
@@ -445,12 +465,10 @@ bool CMT32Pi::InitMT32Synth()
 {
 	assert(m_pMT32Synth == nullptr);
 
-	m_pMT32Synth = new CMT32Synth(m_pConfig->AudioSampleRate, m_pConfig->MT32EmuGain, m_pConfig->MT32EmuReverbGain, m_pConfig->MT32EmuResamplerQuality);
-	if (!m_pMT32Synth->Initialize())
+	m_pMT32Synth = TryAllocSynth<CMT32Synth>(m_pConfig->AudioSampleRate, m_pConfig->MT32EmuGain, m_pConfig->MT32EmuReverbGain, m_pConfig->MT32EmuResamplerQuality);
+	if (!m_pMT32Synth)
 	{
 		LOGWARN("mt32emu init failed; no ROMs present?");
-		delete m_pMT32Synth;
-		m_pMT32Synth = nullptr;
 		return false;
 	}
 
@@ -470,12 +488,10 @@ bool CMT32Pi::InitSoundFontSynth()
 {
 	assert(m_pSoundFontSynth == nullptr);
 
-	m_pSoundFontSynth = new CSoundFontSynth(m_pConfig->AudioSampleRate);
-	if (!m_pSoundFontSynth->Initialize())
+	m_pSoundFontSynth = TryAllocSynth<CSoundFontSynth>(m_pConfig->AudioSampleRate);
+	if (!m_pSoundFontSynth)
 	{
 		LOGWARN("FluidSynth init failed; no SoundFonts present?");
-		delete m_pSoundFontSynth;
-		m_pSoundFontSynth = nullptr;
 		return false;
 	}
 
@@ -488,12 +504,10 @@ bool CMT32Pi::InitYmfmSynth()
 {
 	assert(m_pYmfmSynth == nullptr);
 
-	m_pYmfmSynth = new CYmfmSynth(m_pConfig->AudioSampleRate);
-	if (!m_pYmfmSynth->Initialize())
+	m_pYmfmSynth = TryAllocSynth<CYmfmSynth>(m_pConfig->AudioSampleRate);
+	if (!m_pYmfmSynth)
 	{
 		LOGWARN("ymfm OPL3 init failed");
-		delete m_pYmfmSynth;
-		m_pYmfmSynth = nullptr;
 		return false;
 	}
 
@@ -1495,11 +1509,13 @@ void CMT32Pi::SequencerPlayFile(const char* pPath)
 		SeekHistorySet(m_szSeqCurrentFile, m_pFluidSequencer->GetCurrentTick());
 	}
 
-	// Play file via fluid_player (reads the file from SD — may take >100ms)
-        // m_bSeqLoading is set volatile so the WebSocket timer interrupt can see it
-        m_bSeqLoading = true;
-        const bool bPlayOK = m_pFluidSequencer->Play(pPath);
-        m_bSeqLoading = false;
+	// Play file via fluid_player (reads the file from SD — may take >100ms).
+	// Written on Core 0, read by WebSocket handler (same or different core);
+	// use __atomic_store_n/__atomic_load_n with RELEASE/ACQUIRE to establish
+	// a proper happens-before edge without requiring libatomic.
+	__atomic_store_n(&m_bSeqLoading, true,  __ATOMIC_RELEASE);
+	const bool bPlayOK = m_pFluidSequencer->Play(pPath);
+	__atomic_store_n(&m_bSeqLoading, false, __ATOMIC_RELEASE);
         if (!bPlayOK)
 	{
 		LOGWARN("FluidSequencer: failed to play %s", pPath);
@@ -1557,7 +1573,7 @@ void CMT32Pi::SequencerStop()
 CMT32Pi::TSequencerStatus CMT32Pi::GetSequencerStatus() const
 {
 	TSequencerStatus s;
-	s.bLoading      = m_bSeqLoading;
+	s.bLoading      = __atomic_load_n(&m_bSeqLoading, __ATOMIC_ACQUIRE);
 	s.bLoopEnabled  = m_bSeqLoopEnabled;
 	s.bPaused       = m_bSeqPaused;
 	s.bAutoNext     = m_bSeqAutoNext;
@@ -3342,8 +3358,11 @@ void CMT32Pi::StopMidiRecording()
 int CMT32Pi::SeekHistoryGet(const char* pPath) const
 {
 	for (size_t i = 0; i < m_nSeekHistoryCount; ++i)
-		if (strcmp(m_SeekHistory[i].szPath, pPath) == 0)
-			return m_SeekHistory[i].nTick;
+	{
+		const size_t idx = (m_nSeekHistoryHead + SeekHistoryMax - m_nSeekHistoryCount + i) % SeekHistoryMax;
+		if (strcmp(m_SeekHistory[idx].szPath, pPath) == 0)
+			return m_SeekHistory[idx].nTick;
+	}
 	return -1;
 }
 
@@ -3352,23 +3371,23 @@ void CMT32Pi::SeekHistorySet(const char* pPath, int nTick)
 	// Update existing entry
 	for (size_t i = 0; i < m_nSeekHistoryCount; ++i)
 	{
-		if (strcmp(m_SeekHistory[i].szPath, pPath) == 0)
+		// Ring-buffer index for the i-th oldest entry
+		const size_t idx = (m_nSeekHistoryHead + SeekHistoryMax - m_nSeekHistoryCount + i) % SeekHistoryMax;
+		if (strcmp(m_SeekHistory[idx].szPath, pPath) == 0)
 		{
-			m_SeekHistory[i].nTick = nTick;
+			m_SeekHistory[idx].nTick = nTick;
 			return;
 		}
 	}
-	// Append; if full, evict the oldest entry (index 0) and shift down
-	if (m_nSeekHistoryCount == SeekHistoryMax)
-	{
-		memmove(&m_SeekHistory[0], &m_SeekHistory[1],
-		        (SeekHistoryMax - 1) * sizeof(TSeekEntry));
-		m_nSeekHistoryCount = SeekHistoryMax - 1;
-	}
-	__builtin_strncpy(m_SeekHistory[m_nSeekHistoryCount].szPath, pPath, SeqPathMax - 1);
-	m_SeekHistory[m_nSeekHistoryCount].szPath[SeqPathMax - 1] = '\0';
-	m_SeekHistory[m_nSeekHistoryCount].nTick = nTick;
-	++m_nSeekHistoryCount;
+
+	// Append new entry into the next head slot (overwrites oldest when full)
+	__builtin_strncpy(m_SeekHistory[m_nSeekHistoryHead].szPath, pPath, SeqPathMax - 1);
+	m_SeekHistory[m_nSeekHistoryHead].szPath[SeqPathMax - 1] = '\0';
+	m_SeekHistory[m_nSeekHistoryHead].nTick = nTick;
+
+	m_nSeekHistoryHead = (m_nSeekHistoryHead + 1) % SeekHistoryMax;
+	if (m_nSeekHistoryCount < SeekHistoryMax)
+		++m_nSeekHistoryCount;
 }
 
 void CMT32Pi::SwitchSynth(TSynth NewSynth)
