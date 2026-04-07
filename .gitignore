@@ -51,6 +51,7 @@ sdcard/*
 NOTAS_SESION.md
 
 # Local planning / session documents (not committed)
+.local-docs/
 hoja_de_ruta.md
 README2.md
 MIXER_PLAN.md
