@@ -1,10 +1,9 @@
-## ⚠️ Experimental Fork
+## ⚠️ Experimental Fork — mt32-pi-xr - Extended Remix Features
 
-This repository is a personal, **highly experimental fork** of the original project.
+**mt32-pi-xr** (*MT-32 Pi Extended Remix*) is a personal, **highly experimental fork** of the original project.
 
 - It may be unstable, incomplete, or broken.
 - Features are prototypes and may contain bugs.
-- **No releases are provided** — you must build from source.
 - **Only tested on Raspberry Pi 3 (64-bit / AArch64)**. Other boards may or may not work.
 - I do **not guarantee** that anything works as expected.
 - I do **not provide support** for this fork.
@@ -21,9 +20,9 @@ Expect things to break — that's part of the process.
 
 ---
 
-## 🔀 Extended Edition Features
+## 🔀 mt32-pi-xr — Extended Remix Features
 
-This fork adds a full web-based control interface, a three-engine MIDI mixer/router system, a built-in MIDI file sequencer, real-time audio/MIDI monitoring, and a new Yamaha FM synth path based on ymfm (OPL3/OPL2) on top of the original mt32-pi.
+mt32-pi-xr adds a full web-based control interface, a three-engine MIDI mixer/router system, a built-in MIDI file sequencer, real-time audio/MIDI monitoring, and a new Yamaha FM synth path based on ymfm (OPL3/OPL2) on top of the original mt32-pi.
 
 
 ### System architecture
@@ -131,7 +130,43 @@ Serial / USB / GPIO IRQ
 | `src/synth/ymfmsynth.cpp` | 700 | Yamaha FM engine wrapper for ymfm with OPL3/OPL2 bank support |
 | `src/fluidsequencer.cpp` | 800 | SMF player wrapping `fluid_player_t` |
 | `include/config.def` | — | Single-source config: one `CFG()` line generates INI parser + default |
-| `tests/` | — | doctest suite — 125 tests / 1 190 assertions, host-native |
+| `tests/` | — | doctest suite — 253 tests / 1 689 assertions, host-native |
+
+### Web interface
+
+Served on port 80. All pages share a persistent WebSocket connection (port 8765) for live status updates.
+
+| Page | URL | Functionality |
+|------|-----|---------------|
+| **Status** | `/` | Active synth engine, current SoundFont / ROM, sequencer state, MIDI activity summary, reboot button |
+| **Sound** | `/sound` | Switch synth engine; browse and load SoundFont / ROM files; mark favourites; audition SoundFonts before applying; MT-32 / OPL3 runtime parameters (reverb, chorus, partial count, chip mode) |
+| **Sequencer** | `/sequencer` | Browse and play SMF files; transport controls (play, stop, pause, prev, next); seek bar with tick position; loop and auto-next toggles; tempo multiplier; playlist queue with shuffle and repeat modes |
+| **Mixer** | `/mixer` | Per-engine volume (0–100%) and pan sliders; solo; VU meters; MIDI router matrix (per-channel routing to MT-32 / FluidSynth / OPL3, channel remap, CC filter, layering); save/load router preset |
+| **Monitor** | `/monitor` | Real-time 16-channel MIDI activity meters; piano-roll keyboard with live note highlighting; virtual keyboard for sending note-on/off; raw MIDI sender; SysEx log with clear |
+| **Config** | `/config` | Edit all `mt32-pi.cfg` keys in a form and save to SD card; WiFi SSID/country configuration |
+
+**REST API** — every UI action maps to an `POST /api/…` or `GET /api/…` endpoint usable from scripts or external tools:
+
+```
+GET  /api/status                  — full system status (JSON)
+GET  /api/runtime/status          — live synth parameters
+POST /api/runtime/set             — change a synth parameter at runtime
+POST /api/sequencer/{play,stop,pause,resume,next,prev,seek,loop,autonext,tempo}
+GET  /api/sequencer/{status,files}
+POST /api/mixer/{set,preset}      — set volume/pan/routing, save/load preset
+GET  /api/mixer/status
+POST /api/router/{save,load}
+POST /api/midi/{note,raw}         — send MIDI note or arbitrary bytes
+GET  /api/midi/log                — SysEx / MIDI event log
+POST /api/playlist/{add,remove,clear,up,down,shuffle,repeat,play,add-all}
+POST /api/recorder/{start,stop}   — MIDI recording to .mid on SD card
+GET  /api/soundfont/info          — metadata for a SoundFont by index
+POST /api/config/save             — persist config to SD
+GET  /api/wifi/read               — read WiFi credentials
+POST /api/wifi/save               — update WiFi credentials
+POST /api/system/reboot           — reboot the Pi
+GET  /health                      — liveness probe (returns 200)
+```
 
 ### New features summary
 
@@ -157,14 +192,14 @@ Serial / USB / GPIO IRQ
 | **DLS support** | Native DLS soundbank loader (e.g. Windows `gm.dls`, `RLNDGM2.DLS`) |
 | **SoundFont Favorites** | Mark preferred SoundFonts via localStorage in the browser UI |
 | **SoundFont Preview** | Audition SoundFonts from the web UI before applying |
-| **Unit tests** | doctest suite covering MIDI router, audio mixer, MIDI parser, and config parser (125 tests, ~1 190 assertions) |
+| **Unit tests** | doctest suite covering MIDI router, audio mixer, MIDI parser, config parser, AppleMIDI, OSC, playlist, and sequencer (253 tests, 1 689 assertions) |
 
 ### Synth engines
 
 | Engine | Backend | Typical use | Notes |
 |--------|---------|-------------|-------|
-| **MT-32** | Munt / `CMT32Synth` | Roland LA synthesis, MT-32/CM-32L content | Requires MT-32 ROMs |
-| **SoundFont** | FluidSynth / `CSoundFontSynth` | General MIDI / GS playback | Supports SF2, SF3, and native DLS in this fork |
+| **MT-32** | Munt 2.7.3 / `CMT32Synth` | Roland LA synthesis, MT-32/CM-32L content | Requires MT-32 ROMs |
+| **SoundFont** | FluidSynth 2.5.3 / `CSoundFontSynth` | General MIDI / GS playback | Supports SF2, SF3, and native DLS in this fork |
 | **OPL3** | ymfm / `CYmfmSynth` | AdLib / Sound Blaster FM style playback | Can run in OPL3 or OPL2 mode; bank file optional, built-in GM fallback available |
 
 #### ymfm configuration
@@ -197,7 +232,7 @@ make BOARD=pi3-64 -j$(nproc)
 curl -T kernel8.img ftp://<pi-ip>/kernel8.img --user mt32-pi:mt32-pi
 ```
 
-> There are no pre-built releases. You must build from source.
+> Pre-built releases are available on the [Releases page](../../releases). Tag format: `vX.Y.Z-xr`.
 
 ### Running the test suite
 
@@ -205,11 +240,27 @@ curl -T kernel8.img ftp://<pi-ip>/kernel8.img --user mt32-pi:mt32-pi
 cd tests && make clean && make run
 ```
 
-The test suite uses [doctest](https://github.com/doctest/doctest) and covers `CMIDIRouter`, `CAudioMixer`, `CMIDIParser`, and the config parser (125 tests, ~1 190 assertions). Tests compile natively — no cross-compiler needed.
+The test suite uses [doctest](https://github.com/doctest/doctest) and covers `CMIDIRouter`, `CAudioMixer`, `CMIDIParser`, config parser, `CAppleMIDI`, OSC daemon, playlist, and FluidSynth sequencer (253 tests, 1 689 assertions). Tests compile natively — no cross-compiler needed.
 
 ### Branch conventions
 
 - `main` — stable, always CI-green; never push directly.
 - `feat/<short-name>` — one branch per feature or fix; open a PR to merge.
+
+---
+
+## 🔧 Recent improvements
+
+**Security:** Blocked FTP PORT bounce attacks; JSON injection fix in playlist REST responses.
+
+**Correctness:** Fixed buffer underflow in FTP, off-by-one in WebSocket framing, undefined behaviour in `optional.h`, and a misleading operator-precedence bug in the 24-bit audio clamp constant.
+
+**Thread safety:** Cross-core shared mixer state (`volatile float`) replaced with `__atomic_*` builtins; race condition on sequencer load flag between Core 0 and Core 2 eliminated.
+
+**Performance:** Sequencer seek history rewritten as a lock-free ring buffer (removes `memmove` on every seek); MIDI recording buffer pre-allocated at init; NEON SIMD helpers extracted for reuse across the audio hot path.
+
+**OPL3:** Pitch bend implemented — `UpdateVoiceFNumber()` recalculates F-Number with fractional semitone interpolation, preserving KEY ON bit on register writes.
+
+**Test suite:** Expanded from 125 to **253 tests · 1 689 assertions**, adding coverage for AppleMIDI, OSC, playlist, sequencer, and edge cases across all existing modules.
 
 ---

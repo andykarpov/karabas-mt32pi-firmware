@@ -32,6 +32,7 @@
 #include <cstdio>
 
 #include "net/ftpworker.h"
+#include "version.h"
 #include "utility.h"
 
 // Use a per-instance name for the log macros
@@ -46,7 +47,7 @@ constexpr unsigned int NumRetries = 3;
 #define MT32_PI_VERSION "(version unknown)"
 #endif
 
-const char MOTDBanner[] = "Welcome to the mt32-pi " MT32_PI_VERSION " embedded FTP server!";
+const char MOTDBanner[] = "Welcome to the " MT32_PI_NAME " " MT32_PI_VERSION " embedded FTP server!";
 
 enum class TDirectoryListEntryType
 {

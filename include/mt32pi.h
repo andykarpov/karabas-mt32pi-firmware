@@ -23,6 +23,8 @@
 #ifndef _mt32pi_h
 #define _mt32pi_h
 
+#include "version.h"
+
 #include <circle/actled.h>
 #include <circle/bcm54213.h>
 #include <circle/bcmrandom.h>

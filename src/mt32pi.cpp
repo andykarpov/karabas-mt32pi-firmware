@@ -39,7 +39,6 @@
 #include "lcd/ui.h"
 #include "mt32pi.h"
 
-#define MT32_PI_NAME "mt32-pi"
 LOGMODULE(MT32_PI_NAME);
 const char MT32PiFullName[] = MT32_PI_NAME " " MT32_PI_VERSION;
 

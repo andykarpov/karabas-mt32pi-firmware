@@ -9,7 +9,7 @@ on:
       - "fix/**"
       - "test/**"
     tags:
-      - "*-ng"
+      - "*-xr"
   pull_request:
   workflow_dispatch:
 
@@ -295,7 +295,7 @@ jobs:
           else
             VERSION="snapshot-${GITHUB_SHA::7}"
           fi
-          ZIP_NAME="mt32-pi-${VERSION}.zip"
+          ZIP_NAME="mt32-pi-xr-${VERSION}.zip"
           (cd sdcard && zip -r "../${ZIP_NAME}" .)
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
@@ -314,7 +314,7 @@ jobs:
   release:
     needs: package
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-ng')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-xr')
     permissions:
       contents: write
 
@@ -332,7 +332,7 @@ jobs:
           set -e
           ZIP_FILE="$(ls -1 mt32-pi-*.zip | head -n 1)"
           TAG="${GITHUB_REF_NAME}"
-          TITLE="mt32-pi ${TAG}"
+          TITLE="mt32-pi-xr ${TAG}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP_FILE" --clobber
