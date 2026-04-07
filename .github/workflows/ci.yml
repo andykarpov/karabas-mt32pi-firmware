@@ -342,8 +342,18 @@ jobs:
           TITLE="mt32-pi-rt ${TAG}"
           REPO="${GITHUB_REPOSITORY}"
 
-          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ZIP_FILE" --repo "$REPO" --clobber
+          # Mark as pre-release if tag contains alpha, beta or rc
+          PRERELEASE_FLAG=""
+          if echo "$TAG" | grep -qE '(alpha|beta|rc)'; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP_FILE" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" "$ZIP_FILE" --repo "$REPO" --title "$TITLE" --generate-notes
+            gh release create "$TAG" "$ZIP_FILE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" \
+              --notes "SD card image for mt32-pi-rt ${TAG}. Extract the zip and copy all files to a FAT32-formatted SD card." \
+              $PRERELEASE_FLAG
           fi
