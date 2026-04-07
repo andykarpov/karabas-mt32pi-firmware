@@ -1,6 +1,6 @@
-## ⚠️ Experimental Fork — mt32-pi-xr - Extended Remix Features
+## ⚠️ Experimental Fork — mt32-pi-rt
 
-**mt32-pi-xr** (*MT-32 Pi Extended Remix*) is a personal, **highly experimental fork** of the original project.
+**mt32-pi-rt** is a personal, **highly experimental fork** of the original project.
 
 - It may be unstable, incomplete, or broken.
 - Features are prototypes and may contain bugs.
@@ -20,9 +20,9 @@ Expect things to break — that's part of the process.
 
 ---
 
-## 🔀 mt32-pi-xr — Extended Remix Features
+## 🔀 mt32-pi-rt — Extended Features
 
-mt32-pi-xr adds a full web-based control interface, a three-engine MIDI mixer/router system, a built-in MIDI file sequencer, real-time audio/MIDI monitoring, and a new Yamaha FM synth path based on ymfm (OPL3/OPL2) on top of the original mt32-pi.
+mt32-pi-rt adds a full web-based control interface, a three-engine MIDI mixer/router system, a built-in MIDI file sequencer, real-time audio/MIDI monitoring, and a new Yamaha FM synth path based on ymfm (OPL3/OPL2) on top of the original mt32-pi.
 
 
 ### System architecture
@@ -232,7 +232,7 @@ make BOARD=pi3-64 -j$(nproc)
 curl -T kernel8.img ftp://<pi-ip>/kernel8.img --user mt32-pi:mt32-pi
 ```
 
-> Pre-built releases are available on the [Releases page](../../releases). Tag format: `vX.Y.Z-xr`.
+> Pre-built releases are available on the [Releases page](../../releases). Tag format: `vX.Y.Z-rt`.
 
 ### Running the test suite
 

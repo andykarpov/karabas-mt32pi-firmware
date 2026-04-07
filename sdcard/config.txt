@@ -4,6 +4,7 @@ disable_splash=1
 force_eeprom_read=0
 gpu_mem=16
 disable_overscan=1
+initial_turbo=0
 
 # Ensure stable I2C baud rate by locking the core clock
 core_freq=250
@@ -19,6 +20,7 @@ core_freq_min=250
 
 [pi02]
 arm_64bit=1
+kernel_address=0x80000
 kernel=kernel8.img
 
 # Uncomment the following to overclock the Pi Zero 2 W to match the performance of the Pi 3B
@@ -27,12 +29,20 @@ kernel=kernel8.img
 
 [pi3]
 arm_64bit=1
+kernel_address=0x80000
+kernel=kernel8.img
+
+[pi3+]
+arm_64bit=1
+kernel_address=0x80000
 kernel=kernel8.img
 
 [pi4]
 arm_64bit=1
+kernel_address=0x80000
 armstub=armstub8-rpi4.bin
 kernel=kernel8-rpi4.img
+max_framebuffers=2
 
 # Optimized frequency settings for lower energy use/temperature on Pi 4
 arm_freq=600

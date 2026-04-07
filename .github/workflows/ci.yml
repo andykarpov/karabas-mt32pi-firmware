@@ -9,7 +9,7 @@ on:
       - "fix/**"
       - "test/**"
     tags:
-      - "*-xr"
+      - "*-rt"
   pull_request:
   workflow_dispatch:
 
@@ -121,14 +121,17 @@ jobs:
           echo "## Kernel size — ${{ matrix.board }}" >> "$GITHUB_STEP_SUMMARY"
           echo "| File | Size (KiB) |" >> "$GITHUB_STEP_SUMMARY"
           echo "|------|------------|" >> "$GITHUB_STEP_SUMMARY"
+          FAILED=0
           for f in out/${{ matrix.board }}/kernel*.img; do
             SIZE_B=$(stat -c %s "$f")
             SIZE_KiB=$(( SIZE_B / 1024 ))
             echo "| \`$(basename $f)\` | ${SIZE_KiB} |" >> "$GITHUB_STEP_SUMMARY"
-            if [ "$SIZE_KiB" -gt 10240 ]; then
-              echo "::warning file=$(basename $f)::$(basename $f) is ${SIZE_KiB} KiB (exceeds 10 MiB soft limit)"
+            if [ "$SIZE_KiB" -gt 4096 ]; then
+              echo "::error file=$(basename $f)::$(basename $f) is ${SIZE_KiB} KiB — exceeds KERNEL_MAX_SIZE of 4096 KiB (4 MiB)"
+              FAILED=1
             fi
           done
+          exit $FAILED
 
       - name: Upload built kernel
         uses: actions/upload-artifact@v4
@@ -147,7 +150,7 @@ jobs:
       - name: Upload built kernel (HDMI)
         uses: actions/upload-artifact@v4
         with:
-          name: kernels-${{ matrix.board }}-hdmi
+          name: hdmi-kernels-${{ matrix.board }}
           path: out/${{ matrix.board }}-hdmi/kernel*.img
 
   package:
@@ -194,6 +197,7 @@ jobs:
         with:
           path: |
             sdcard/armstub8-rpi4.bin
+            sdcard/bcm2710-rpi-zero-2-w.dtb
             sdcard/bcm2711-rpi-4-b.dtb
             sdcard/bcm2711-rpi-400.dtb
             sdcard/bcm2711-rpi-cm4.dtb
@@ -218,6 +222,7 @@ jobs:
         run: |
           make -C "$BOOT_HOME" firmware armstub64
           cp "$BOOT_HOME"/armstub8-rpi4.bin \
+             "$BOOT_HOME"/bcm2710-rpi-zero-2-w.dtb \
              "$BOOT_HOME"/bcm2711-rpi-4-b.dtb \
              "$BOOT_HOME"/bcm2711-rpi-400.dtb \
              "$BOOT_HOME"/bcm2711-rpi-cm4.dtb \
@@ -295,7 +300,7 @@ jobs:
           else
             VERSION="snapshot-${GITHUB_SHA::7}"
           fi
-          ZIP_NAME="mt32-pi-xr-${VERSION}.zip"
+          ZIP_NAME="mt32-pi-rt-${VERSION}.zip"
           (cd sdcard && zip -r "../${ZIP_NAME}" .)
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
@@ -314,7 +319,7 @@ jobs:
   release:
     needs: package
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-xr')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-rt')
     permissions:
       contents: write
 
@@ -332,7 +337,7 @@ jobs:
           set -e
           ZIP_FILE="$(ls -1 mt32-pi-*.zip | head -n 1)"
           TAG="${GITHUB_REF_NAME}"
-          TITLE="mt32-pi-xr ${TAG}"
+          TITLE="mt32-pi-rt ${TAG}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP_FILE" --clobber

@@ -23,6 +23,6 @@
 #ifndef _version_h
 #define _version_h
 
-#define MT32_PI_NAME "mt32-pi-xr"
+#define MT32_PI_NAME "mt32-pi-rt"
 
 #endif
