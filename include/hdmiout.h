@@ -22,6 +22,10 @@ class CHdmiOutput
 public:
         static constexpr unsigned Channels = 16;
 
+        // Screen geometry — exposed so callers can log/report them
+        static constexpr unsigned ScreenW   = 1280;
+        static constexpr unsigned ScreenH   = 720;
+
         explicit CHdmiOutput(CMT32Pi* pKernel);
 
         // Called once from VideoTask() before entering the render loop.
@@ -34,10 +38,7 @@ public:
 
 private:
         // ---- Layout constants (1280×720 logical grid) ----
-        static constexpr unsigned ScreenW   = 1280;
-        static constexpr unsigned ScreenH   = 720;
 
-        // Title bar
         static constexpr unsigned TitleH    = 56;
 
         // VU section — 16 bars

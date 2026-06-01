@@ -3710,9 +3710,10 @@ void CMT32Pi::VideoTask()
 		return;
 	}
 
+	LOGNOTE("HDMI display: initializing C2DGraphics (%ux%u)...", CHdmiOutput::ScreenW, CHdmiOutput::ScreenH);
 	if (!m_HdmiOutput.Initialize())
 	{
-		LOGWARN("C2DGraphics: failed to initialize framebuffer; HDMI may not be connected");
+		LOGWARN("HDMI display: C2DGraphics init failed (no HDMI cable? gpu_mem too low?)");
 		return;
 	}
 

@@ -533,9 +533,6 @@ private:
 	CMIDIRouter   m_MIDIRouter;
 	CAudioMixer   m_AudioMixer;
 	CAudioEffects m_AudioEffects;
-
-	// HDMI visual display (Core 3)
-	CHdmiOutput   m_HdmiOutput;
 	volatile bool m_bMixerEnabled;
 
 	// Audio render performance monitor (Core 2 writes, Core 0 reads)
@@ -602,6 +599,9 @@ private:
 
 	// Playlist queue (Core 0 only)
 	CPlaylist m_Playlist;
+
+	// HDMI visual display (Core 3)
+	CHdmiOutput   m_HdmiOutput;
 
 	// Event handling
 	TEventQueue m_EventQueue;

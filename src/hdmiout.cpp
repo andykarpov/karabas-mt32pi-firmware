@@ -2,6 +2,9 @@
 // Proof of concept for Core 3 visual output.
 
 #include "hdmiout.h"
+
+#include <circle/serial.h>
+#include <circle/usb/usbhcidevice.h>
 #include "mt32pi.h"
 
 #include <circle/timer.h>
@@ -13,7 +16,7 @@
 static constexpr u32 PeakHoldTicks = 2000000u;
 
 CHdmiOutput::CHdmiOutput(CMT32Pi* pKernel)
-        : m_Graphics(ScreenW, ScreenH, /*bVSync=*/true, /*nDisplay=*/0),
+        : m_Graphics(ScreenW, ScreenH, /*bVSync=*/FALSE, /*nDisplay=*/0),
           m_pKernel(pKernel)
 {
         memset(&m_State, 0, sizeof(m_State));
