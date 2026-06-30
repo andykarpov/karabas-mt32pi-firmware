@@ -41,10 +41,7 @@ $(CIRCLE_STDLIB_CONFIG) $(CIRCLE_CONFIG)&:
 	@echo "Configuring for Raspberry Pi $(RASPBERRYPI) ($(BITS) bit)"
 	$(CIRCLESTDLIBHOME)/configure --raspberrypi=$(RASPBERRYPI) --prefix=$(PREFIX)
 
-# Apply patches
-	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-50-minimal-usb-drivers.patch
-	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-50-cp210x-remove-partnum-check.patch
-	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-50-httpdaemon-keepalive.patch
+# Note: circle-50-*.patch changes are already incorporated in Circle Step51 (no patches needed)
 
 ifeq ($(strip $(GC_SECTIONS)),1)
 # Enable function/data sections for circle-stdlib
@@ -60,7 +57,8 @@ endif
 # Improve I/O throughput
 	@echo "DEFINE += -DNO_BUSY_WAIT" >> $(CIRCLE_CONFIG)
 
-# Exclude unused USB device classes (matches circle-50-minimal-usb-drivers.patch)
+# Exclude unused USB device classes (already removed from Circle Step51's USB Makefile, but still
+# needed here because usbdevicefactory.cpp uses #ifndef EXCLUDE_USB_* guards)
 	@echo "DEFINE += -DEXCLUDE_USB_STORAGE" >> $(CIRCLE_CONFIG)
 	@echo "DEFINE += -DEXCLUDE_USB_MOUSE" >> $(CIRCLE_CONFIG)
 	@echo "DEFINE += -DEXCLUDE_USB_GAMEPAD" >> $(CIRCLE_CONFIG)
@@ -184,9 +182,6 @@ clean:
 #
 mrproper: clean
 # Reverse patches
-	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-minimal-usb-drivers.patch
-	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-cp210x-remove-partnum-check.patch
-	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-httpdaemon-keepalive.patch
 	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.5-circle.patch
 
 # Clean circle-stdlib
