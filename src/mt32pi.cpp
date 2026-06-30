@@ -3468,6 +3468,12 @@ void CMT32Pi::SwitchSoundFont(size_t nIndex)
 		return;
 
 	LOGNOTE("Switching to SoundFont %d", nIndex);
+
+	// Flush audio device buffers before tearing down the synth to avoid
+	// outputting stale samples from the old SoundFont after the switch
+	if (m_pSound)
+		m_pSound->Flush();
+
 	if (m_pSoundFontSynth->SwitchSoundFont(nIndex))
 	{
 		// Handle any MIDI data that has been queued up while busy
