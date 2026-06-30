@@ -100,7 +100,7 @@ $(MT32EMUBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 fluidsynth: $(FLUIDSYNTHBUILDDIR)/.done
 
 $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
-	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.3-circle.patch
+	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.5-circle.patch
 
 	@CFLAGS="$(CFLAGS_EXTERNAL)" \
 	CXXFLAGS="$(CFLAGS_EXTERNAL)" \
@@ -187,7 +187,7 @@ mrproper: clean
 	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-minimal-usb-drivers.patch
 	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-cp210x-remove-partnum-check.patch
 	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-httpdaemon-keepalive.patch
-	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.3-circle.patch
+	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.5-circle.patch
 
 # Clean circle-stdlib
 	@if [ -f $(CIRCLE_STDLIB_CONFIG) ]; then $(MAKE) -C $(CIRCLESTDLIBHOME) mrproper; fi
