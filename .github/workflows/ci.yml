@@ -6,6 +6,7 @@ on:
       - main
       - master
       - "chore/**"
+      - "feat/**"
       - "fix/**"
       - "test/**"
     tags:
