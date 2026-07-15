@@ -58,19 +58,16 @@ EXTRACLEAN	+=	src/*.d src/*.o \
 # inih
 #
 OBJS		+=	$(INIHHOME)/ini.o
-INCLUDE		+=	-I $(INIHHOME)
+INCLUDE		+=	-I $(INIHHOME) \
+			-I $(CIRCLESTDLIBHOME)/include \
+			-I include \
+			-I .
 EXTRACLEAN	+=	$(INIHHOME)/ini.d \
 			$(INIHHOME)/ini.o
 
 include $(CIRCLEHOME)/Rules.mk
 
 CFLAGS		+=	-Werror -Wextra -Wno-unused-parameter
-
-CFLAGS		+=	-I "$(NEWLIBDIR)/include" \
-			-I $(STDDEF_INCPATH) \
-			-I $(CIRCLESTDLIBHOME)/include \
-			-I include \
-			-I .
 
 LIBS 		:=	$(CIRCLE_STDLIB_LIBS) \
 			$(CIRCLEHOME)/addon/fatfs/libfatfs.a \
