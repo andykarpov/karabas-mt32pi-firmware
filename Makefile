@@ -41,8 +41,6 @@ $(CIRCLE_STDLIB_CONFIG) $(CIRCLE_CONFIG)&:
 	@echo "Configuring for Raspberry Pi $(RASPBERRYPI) ($(BITS) bit)"
 	$(CIRCLESTDLIBHOME)/configure --raspberrypi=$(RASPBERRYPI) --prefix=$(PREFIX)
 
-# Note: circle-50-*.patch changes are already incorporated in Circle Step51 (no patches needed)
-
 ifeq ($(strip $(GC_SECTIONS)),1)
 # Enable function/data sections for circle-stdlib
 	@echo "CFLAGS_FOR_TARGET += -ffunction-sections -fdata-sections" >> $(CIRCLE_STDLIB_CONFIG)
@@ -63,13 +61,18 @@ endif
 	@echo "DEFINE += -DEXCLUDE_USB_MOUSE" >> $(CIRCLE_CONFIG)
 	@echo "DEFINE += -DEXCLUDE_USB_GAMEPAD" >> $(CIRCLE_CONFIG)
 	@echo "DEFINE += -DEXCLUDE_USB_PRINTER" >> $(CIRCLE_CONFIG)
-	@echo "DEFINE += -DKERNEL_MAX_SIZE=\"(4*MEGABYTE)\"" >> $(CIRCLE_CONFIG)
+
+# Support large temporary allocations while decoding SF3 SoundFonts.
+	@echo "DEFINE += -DHEAP_BLOCK_BUCKET_SIZES=0x40,0x400,0x1000,0x4000,0x10000,0x40000,0x80000,0x100000,0x200000,0x400000,0x800000" >> $(CIRCLE_CONFIG)
 #
 # Build circle-stdlib
 #
 circle-stdlib: $(CIRCLESTDLIBHOME)/.done
 
 $(CIRCLESTDLIBHOME)/.done: $(CIRCLE_STDLIB_CONFIG)
+	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-50-httpdaemon-keepalive.patch
+	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-50-minimal-usb-drivers.patch
+	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-50-cp210x-remove-partnum-check.patch
 	$(MAKE) -C $(CIRCLESTDLIBHOME)
 	touch $@
 
@@ -98,6 +101,7 @@ $(MT32EMUBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 fluidsynth: $(FLUIDSYNTHBUILDDIR)/.done
 
 $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
+	# The Circle adaptation is verified to apply unchanged to FluidSynth 2.5.6.
 	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.5-circle.patch
 
 	@CFLAGS="$(CFLAGS_EXTERNAL)" \
@@ -182,6 +186,9 @@ clean:
 #
 mrproper: clean
 # Reverse patches
+	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-cp210x-remove-partnum-check.patch
+	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-minimal-usb-drivers.patch
+	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-50-httpdaemon-keepalive.patch
 	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.5-circle.patch
 
 # Clean circle-stdlib
