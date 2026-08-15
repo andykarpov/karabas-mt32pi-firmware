@@ -92,7 +92,7 @@ $(MT32EMUBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 		 -Dlibmt32emu_SHARED=FALSE \
 		 $(MT32EMUHOME) \
 		 >/dev/null
-	@cmake --build $(MT32EMUBUILDDIR)
+	@/usr/bin/cmake --build $(MT32EMUBUILDDIR)
 	@touch $@
 
 #
@@ -103,45 +103,10 @@ fluidsynth: $(FLUIDSYNTHBUILDDIR)/.done
 $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 	# The Circle adaptation is verified to apply unchanged to FluidSynth 2.5.6.
 	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.5-circle.patch
-
-	@CFLAGS="$(CFLAGS_EXTERNAL)" \
-	CXXFLAGS="$(CFLAGS_EXTERNAL)" \
-	cmake -B $(FLUIDSYNTHBUILDDIR) \
-		 $(CMAKE_TOOLCHAIN_FLAGS) \
-		 -DCMAKE_C_FLAGS_RELEASE="-Ofast -fopenmp-simd" \
-		 -DCMAKE_CXX_FLAGS_RELEASE="-Ofast -fopenmp-simd" \
-		 -DCMAKE_BUILD_TYPE=Release \
-		 -DBUILD_SHARED_LIBS=OFF \
-		 -Dosal=embedded \
-		 -Denable-aufile=OFF \
-		 -Denable-dbus=OFF \
-		 -Denable-dsound=OFF \
-		 -Denable-floats=ON \
-		 -Denable-ipv6=OFF \
-		 -Denable-jack=OFF \
-		 -Denable-ladspa=OFF \
-		 -Denable-libinstpatch=OFF \
-		 -Denable-libsndfile=OFF \
-		 -Denable-midishare=OFF \
-		 -Denable-native-dls=ON \
-		 -DCMAKE_CXX_STANDARD=17 \
-		 -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-		 -Denable-network=OFF \
-		 -Denable-oboe=OFF \
-		 -Denable-openmp=OFF \
-		 -Denable-opensles=OFF \
-		 -Denable-oss=OFF \
-		 -Denable-pipewire=OFF \
-		 -Denable-pulseaudio=OFF \
-		 -Denable-readline=OFF \
-		 -Denable-sdl3=OFF \
-		 -Denable-threads=OFF \
-		 -Denable-waveout=OFF \
-		 -Denable-winmidi=OFF \
-		 $(FLUIDSYNTHHOME) \
-		 >/dev/null
-	@cmake --build $(FLUIDSYNTHBUILDDIR) --target libfluidsynth
+	@CFLAGS="$(CFLAGS_EXTERNAL)" CXXFLAGS="$(CFLAGS_EXTERNAL)" cmake -B $(FLUIDSYNTHBUILDDIR) $(CMAKE_TOOLCHAIN_FLAGS) -DCMAKE_C_FLAGS_RELEASE="-Ofast -fopenmp-simd" -DCMAKE_CXX_FLAGS_RELEASE="-Ofast -fopenmp-simd" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -Dosal=embedded -Denable-aufile=OFF -Denable-dbus=OFF -Denable-dsound=OFF -Denable-floats=ON -Denable-ipv6=OFF -Denable-jack=OFF -Denable-ladspa=OFF -Denable-libinstpatch=OFF -Denable-libsndfile=OFF -Denable-midishare=OFF -Denable-native-dls=ON -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON -Denable-network=OFF -Denable-oboe=OFF -Denable-openmp=OFF -Denable-opensles=OFF -Denable-oss=OFF -Denable-pipewire=OFF -Denable-pulseaudio=OFF -Denable-readline=OFF -Denable-sdl3=OFF -Denable-threads=OFF -Denable-waveout=OFF -Denable-winmidi=OFF $(FLUIDSYNTHHOME)
+	@/usr/bin/cmake --build $(FLUIDSYNTHBUILDDIR) --target libfluidsynth
 	@touch $@
+
 
 #
 # Build ymfm
