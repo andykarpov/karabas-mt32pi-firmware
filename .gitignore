@@ -4,7 +4,7 @@ build-*
 !sdcard/*.cfg
 !sdcard/*.txt
 !sdcard/soundfonts/
-sdcard/soundfonts/*
+#sdcard/soundfonts/*
 !sdcard/soundfonts/*.cfg
 !sdcard/soundfonts/*.txt
 !sdcard/*.img
