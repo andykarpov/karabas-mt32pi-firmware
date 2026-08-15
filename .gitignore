@@ -1,6 +1,6 @@
 # Build directories
 build-*
-sdcard/*
+#sdcard/*
 !sdcard/*.cfg
 !sdcard/*.txt
 !sdcard/soundfonts/
