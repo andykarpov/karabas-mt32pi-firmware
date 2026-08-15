@@ -7,6 +7,7 @@ sdcard/*
 sdcard/soundfonts/*
 !sdcard/soundfonts/*.cfg
 !sdcard/soundfonts/*.txt
+!sdcard/*.img
 
 # macOS metadata
 .DS_Store
@@ -14,7 +15,7 @@ sdcard/soundfonts/*
 # Kernel files
 *.elf
 *.hex
-*.img
+#*.img
 *.lst
 *.map
 

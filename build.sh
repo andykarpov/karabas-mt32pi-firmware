@@ -25,7 +25,7 @@ make clean BOARD=pi2
 
 make mrproper BOARD=pi4-64
 make -j4 BOARD=pi4-64
-cp kernel8-rpi4.img sdcard/kerne8-rpi4.img
+cp kernel8-rpi4.img sdcard/kernel8-rpi4.img
 make clean BOARD=pi4-64
 
 make mrproper BOARD=pi4
