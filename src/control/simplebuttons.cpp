@@ -23,10 +23,10 @@
 #include "control/button.h"
 #include "control/control.h"
 
-constexpr u8 GPIOPinButton1 = 17;
-constexpr u8 GPIOPinButton2 = 27;
-constexpr u8 GPIOPinButton3 = 22;
-constexpr u8 GPIOPinButton4 = 23;
+constexpr u8 GPIOPinButton1 = 5;
+constexpr u8 GPIOPinButton2 = 6;
+constexpr u8 GPIOPinButton3 = 10;
+constexpr u8 GPIOPinButton4 = 9;
 
 constexpr u8 ButtonMask = 1 << static_cast<u8>(TButton::Button1) |
 			  1 << static_cast<u8>(TButton::Button2) |
