@@ -8,6 +8,7 @@ build-*
 !sdcard/soundfonts/*.cfg
 !sdcard/soundfonts/*.txt
 !sdcard/*.img
+sdcard/roms/*.ROM
 
 # macOS metadata
 .DS_Store
